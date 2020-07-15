@@ -1,8 +1,21 @@
 
 import trio
 from trio_scope import spawn, spawn_service, run, Scope, scope, main_scope
+from contextlib import asynccontextmanager
 
 _done = None
+
+sub_scope=False
+with_error = False
+
+
+@asynccontextmanager
+async def maybe(p,*x):
+    if sub_scope:
+        async with p(*x) as s:
+            yield s
+    else:
+        yield "foo"
 
 async def dly():
     with trio.CancelScope() as sc:
@@ -14,7 +27,7 @@ async def serv_c():
     try:
         print("serv_c: sleep")
         await trio.sleep(1)
-        if False:
+        if with_error:
             raise RuntimeError("Bye")
         print("serv_c: set _done")
         _done.set()
@@ -36,8 +49,7 @@ async def serv_b():
 async def main_a():
     print("main_a: startup")
     try:
-        async with main_scope("test"):
-            assert scope.get()._name == "test"
+        async with maybe(main_scope,"test"):
             await spawn_service(serv_b)
             print("main_a: sleep")
             await trio.sleep(999)

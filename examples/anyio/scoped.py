@@ -1,8 +1,22 @@
 
 import anyio
 from asyncscope import spawn, spawn_service, run, Scope, scope, main_scope
+from contextlib import asynccontextmanager
 
 _done = None
+
+await self.master.send(
+
+sub_scope=False
+with_error = False
+
+@asynccontextmanager
+async def maybe(p,*x):
+    if sub_scope:
+        async with p(*x) as s:
+            yield s
+    else:
+        yield "foo"
 
 async def dly():
     async with anyio.open_cancel_scope(shield=True):
@@ -13,7 +27,7 @@ async def serv_c():
     try:
         print("serv_c: sleep")
         await anyio.sleep(1)
-        if False:
+        if with_error:
             raise RuntimeError("Bye")
         print("serv_c: set _done")
         await _done.set()
@@ -35,8 +49,7 @@ async def serv_b():
 async def main_a():
     print("main_a: startup")
     try:
-        async with main_scope("test"):
-            assert scope.get()._name == "test"
+        async with maybe(main_scope,"test"):
             await spawn_service(serv_b)
             print("main_a: sleep")
             await anyio.sleep(999)
