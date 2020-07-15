@@ -97,8 +97,7 @@ class Scope:
         async def _service(proc, args, kwargs):
             nonlocal s
             async with anyio.open_cancel_scope(shield=True) as sc:
-                os = scope.get()
-                s = Scope(os._up_tg, _name_)
+                s = Scope(self._up_tg, _name_)
                 async with s:
                     await proc(*args, **kwargs)
 

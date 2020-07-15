@@ -97,8 +97,7 @@ class Scope:
             nonlocal s
             with trio.CancelScope() as sc:
                 sc.shield = True
-                os = scope.get()
-                s = Scope(os._up_nursery, _name_)
+                s = Scope(self._up_nursery, _name_)
                 async with s:
                     await proc(*args, **kwargs)
 
