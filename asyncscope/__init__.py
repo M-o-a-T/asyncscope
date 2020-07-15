@@ -109,33 +109,36 @@ class Scope:
     async def _gen(self):
         if self._scope is not None:
             raise RuntimeError("You can't enter a scope twice")
-        async with anyio.create_task_group() as tg:
-            self._tg = tg
-            os = scope.get()
-            self._scope = scope.set(self)
+        try:
+            async with anyio.create_task_group() as tg:
+                self._tg = tg
+                os = scope.get()
+                self._scope = scope.set(self)
 
-            if not self._new:
-                self._prev = None if os is None else os._prev
-                if self._prev is not None:
-                    self._prev._next = self
-                if os is not None:
-                    os._prev = self
-                self._next = os
-            try:
-                yield self
-            finally:
-                scope.reset(self._scope)
-                async with anyio.open_cancel_scope(shield=True):
-                    if self._next:
-                        await self._next.cancel()
-                        await self._next.wait()
-                    await self._tg.cancel_scope.cancel()
-                    prev, self._prev = self._prev, None
-                    await self._done.set()
-                    if prev:
-                        prev._next = None
-                        await prev.cancel()
-                    self._tg = None
+                if not self._new:
+                    self._prev = None if os is None else os._prev
+                    if self._prev is not None:
+                        self._prev._next = self
+                    if os is not None:
+                        os._prev = self
+                    self._next = os
+                try:
+                    yield self
+                finally:
+                    async with anyio.open_cancel_scope(shield=True):
+                        if self._next:
+                            await self._next.cancel()
+                            await self._next.wait()
+                        await self._tg.cancel_scope.cancel()
+        finally:
+            scope.reset(self._scope)
+            async with anyio.open_cancel_scope(shield=True):
+                await self._done.set()
+                prev, self._prev = self._prev, None
+                if prev:
+                    prev._next = None
+                    await prev.cancel()
+                self._tg = None
 
     async def __aenter__(self):
         self._gen_ = self._gen()
@@ -149,12 +152,17 @@ class Scope:
 
         This will first cancel the scope(s) depending on this one.
         """
+        print("Cancel A",self._name)
         if self._next:
+            print("Cancel B",self._name)
             await self._next.cancel()
         if self._next:
+            print("Cancel C",self._name)
             await self._next.wait()
         if self._tg:
+            print("Cancel D",self._name)
             await self._tg.cancel_scope.cancel()
+        print("Cancel E",self._name)
 
     async def wait(self):
         """
