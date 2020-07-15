@@ -33,7 +33,7 @@ from typing import Any
 
 __all__ = ["run"]
 
-scope = ContextVar("taskgroup", default=None)
+scope = ContextVar("scope", default=None)
 
 class Scope:
     _next: Scope = None
