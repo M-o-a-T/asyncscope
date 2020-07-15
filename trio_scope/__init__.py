@@ -80,6 +80,31 @@ class Scope:
         await evt.wait()
         return _scope
 
+    async def spawn_service(self, proc, *args, _name_:str=None, **kwargs):
+        """
+        Run 'proc' in a new service scope, i.e. one that should end *after* the
+        current scope terminates.
+
+        Special arguments:
+            _name_: Name for the new scope
+
+        Returns: the new scope.
+        """
+        s = None
+        if _name_ is None:
+            _name_ = proc.__name__
+        async def _service(proc, args, kwargs):
+            nonlocal s
+            with trio.CancelScope() as sc:
+                sc.shield = True
+                os = scope.get()
+                s = Scope(os._up_nursery, _name_)
+                async with s:
+                    await proc(*args, **kwargs)
+
+        self._up_nursery.start_soon(_service, proc, args, kwargs)
+        return s
+
 
     @asynccontextmanager
     async def _gen(self):
@@ -140,7 +165,7 @@ class Scope:
         await self._done.wait()
 
 
-async def spawn_service(proc, *args, _name_:str=None, **kwargs):
+async def spawn_service(proc, *args, **kwargs):
     """
     Run 'proc' in a new service scope, i.e. one that should end *after* the
     current scope terminates.
@@ -150,20 +175,7 @@ async def spawn_service(proc, *args, _name_:str=None, **kwargs):
 
     Returns: the new scope.
     """
-    s = None
-    if _name_ is None:
-        _name_ = proc.__name__
-    async def _service(proc, args, kwargs):
-        nonlocal s
-        with trio.CancelScope() as sc:
-            sc.shield = True
-            os = scope.get()
-            s = Scope(os._up_nursery, _name_)
-            async with s:
-                await proc(*args, **kwargs)
-
-    scope.get()._up_nursery.start_soon(_service, proc, args, kwargs)
-    return s
+    return await scope.get().spawn_service(proc, *args, **kwargs)
 
 async def spawn(proc, *args, **kwargs):
     """

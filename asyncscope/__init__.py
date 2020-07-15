@@ -81,6 +81,30 @@ class Scope:
         await evt.wait()
         return _scope
 
+    async def spawn_service(self, proc, *args, _name_:str=None, **kwargs):
+        """
+        Run 'proc' in a new service scope, i.e. one that should end *after* the
+        current scope terminates.
+
+        Special arguments:
+            _name_: Name for the new scope
+
+        Returns: the new scope.
+        """
+        s = None
+        if _name_ is None:
+            _name_ = proc.__name__
+        async def _service(proc, args, kwargs):
+            nonlocal s
+            async with anyio.open_cancel_scope(shield=True) as sc:
+                os = scope.get()
+                s = Scope(os._up_tg, _name_)
+                async with s:
+                    await proc(*args, **kwargs)
+
+        await self._up_tg.spawn(_service, proc, args, kwargs)
+        return s
+
 
     @asynccontextmanager
     async def _gen(self):
@@ -140,7 +164,7 @@ class Scope:
         await self._done.wait()
 
 
-async def spawn_service(proc, *args, _name_:str=None, **kwargs):
+async def spawn_service(proc, *args, **kwargs):
     """
     Run 'proc' in a new service scope, i.e. one that should end *after* the
     current scope terminates.
@@ -150,19 +174,7 @@ async def spawn_service(proc, *args, _name_:str=None, **kwargs):
 
     Returns: the new scope.
     """
-    s = None
-    if _name_ is None:
-        _name_ = proc.__name__
-    async def _service(proc, args, kwargs):
-        nonlocal s
-        async with anyio.open_cancel_scope(shield=True) as sc:
-            os = scope.get()
-            s = Scope(os._up_tg, _name_)
-            async with s:
-                await proc(*args, **kwargs)
-
-    await scope.get()._up_tg.spawn(_service, proc, args, kwargs)
-    return s
+    return await scope.get().spawn_service(proc, *args, **kwargs)
 
 async def spawn(proc, *args, **kwargs):
     """
