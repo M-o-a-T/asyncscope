@@ -131,10 +131,21 @@ class Scope:
 
         Never use this method to check whether you need to call `service`.
         """
-        s = self._set[name]
+        s = self.lookup_scope(name)
         if not s._data_lock.is_set():
             raise KeyError(name)
         return s._data
+
+    def lookup_scope(self, name):
+        """
+        Return the scope associated with some name.
+
+        Raises KeyError if the named scope doesn't exist.
+
+        Use this if you need to add a dependency.
+        """
+        s = self._set[name]
+        return s
 
     async def register(self, data: Any):
         """
@@ -366,7 +377,7 @@ class ScopeSet:
         """
         Context manager for a new scope set
         """
-        s = Scope(self, "_main")
+        s = Scope(self, "_main", new=True)
         async with anyio.create_task_group() as tg:
             self._tg = tg
             async with s._ctx():
@@ -427,10 +438,19 @@ def lookup(name):
     Raises KeyError if the named scope doesn't exist or has not
     provided any data.
 
-    Use this if you need a temporary reference to a scope which might
-    depend on the current one.
+    Use this if you need a temporary reference to the data of a scope which
+    might depend on the current one.
+    """
+    return scope.get().lookup(name)
 
-    Never use this method to check whether you need to call `service`.
+
+def lookup_scope(name):
+    """
+    Return the scope associated with some name.
+
+    Raises KeyError if the named scope doesn't exist.
+
+    Use this if you need to add a dependency.
     """
     return scope.get().lookup(name)
 
