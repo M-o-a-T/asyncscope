@@ -35,11 +35,12 @@ __all__ = ["run"]
 
 scope = ContextVar("scope", default=None)
 
+
 class Scope:
     _next: Set[Scope] = None
-    _prev: Set[Scope]= None
+    _prev: Set[Scope] = None
     _done: anyio.abc.Event = None
-    _scope  = None
+    _scope = None
     # This is the taskgroup that controls the jobs running in this scope
     _tg: anyio.abc.TaskGroup = None
 
@@ -54,7 +55,7 @@ class Scope:
 
     _no_more: anyio.abc.Lock = None
 
-    def __init__(self, scopeset:ScopeSet, name:str, new:bool=False):
+    def __init__(self, scopeset: ScopeSet, name: str, new: bool = False):
         self._next = set()
         self._prev = set()
         self._set = scopeset
@@ -102,7 +103,6 @@ class Scope:
         """
         return await self._set.spawn(proc, *args, **kwargs)
 
-
     async def service(self, name, proc, *args, **kwargs):
         """
         Start this service as a dependent context if it doesn't run
@@ -113,12 +113,11 @@ class Scope:
         try:
             s = self._set[name]
         except KeyError:
-            s = await self.spawn_service(proc,*args,**kwargs, _name_=name, _by_=self)
+            s = await self.spawn_service(proc, *args, **kwargs, _name_=name, _by_=self)
         else:
             self.requires(s)
         await s._data_lock.wait()
         return s._data
-
 
     def lookup(self, name):
         """
@@ -137,8 +136,7 @@ class Scope:
             raise KeyError(name)
         return s._data
 
-
-    async def register(self, data:Any):
+    async def register(self, data: Any):
         """
         Register some data with this scope.
 
@@ -148,7 +146,6 @@ class Scope:
             raise RuntimeError("You can't change the registration value")
         self._data = data
         await self._data_lock.set()
-
 
     @asynccontextmanager
     async def _ctx(self):
@@ -193,7 +190,7 @@ class Scope:
             t = todo.pop()
             if s is t:
                 raise RuntimeError(f"{self} may not require {s}")
-            todo |= t._prev-seen
+            todo |= t._prev - seen
             seen |= todo
 
     def requires(self, s: Scope):
@@ -229,6 +226,7 @@ class Scope:
         """
         todo = set(self._next)
         seen = set()
+
         def deps(s):
             if s in seen:
                 return
@@ -236,9 +234,9 @@ class Scope:
             for n in s._next - seen:
                 yield from deps(n)
             yield s
+
         for n in list(self._next):
             yield from deps(n)
-
 
     async def no_more_dependents(self):
         """
@@ -312,9 +310,9 @@ class ScopeSet:
     _ctx_ = None
 
     def __init__(self):
-        self._scopes:Dict[str,Scope] = dict()
+        self._scopes: Dict[str, Scope] = dict()
 
-    async def spawn(self, proc, *args, _name_:str=None, _by_:Scope=None, **kwargs):
+    async def spawn(self, proc, *args, _name_: str = None, _by_: Scope = None, **kwargs):
         """
         Run 'proc' in a new scope which the current scope depends on.
 
@@ -340,7 +338,6 @@ class ScopeSet:
         await self._tg.spawn(_service, s, proc, args, kwargs)
         return s
 
-
     def __getitem__(self, key):
         if isinstance(key, Scope):
             key = key._name
@@ -364,13 +361,12 @@ class ScopeSet:
             key = key._name
         return key in self._scopes
 
-
     @asynccontextmanager
     async def _ctx(self):
         """
         Context manager for a new scope set
         """
-        s = Scope(self,"_main")
+        s = Scope(self, "_main")
         async with anyio.create_task_group() as tg:
             self._tg = tg
             async with s._ctx():
@@ -381,7 +377,6 @@ class ScopeSet:
                     del self._scopes[s._name]
 
         # At this point `self._scopes` shall be empty
-
 
     async def __aenter__(self):
         if self._ctx_ is not None:
@@ -440,7 +435,7 @@ def lookup(name):
     return scope.get().lookup(name)
 
 
-async def register(data:Any):
+async def register(data: Any):
     """
     Register some data with this scope.
 
@@ -467,15 +462,17 @@ async def main_scope(_name_="main"):
     This context manager provides you with a new "main" scope, i.e. one you
     can start service tasks in.
     """
-    async with anyio.create_task_group() as tg, Scope(tg,_name_,new=True)._ctx() as s:
+    async with anyio.create_task_group() as tg, Scope(tg, _name_, new=True)._ctx() as s:
         try:
             yield s
         finally:
             await s.cancel_dependents()
 
+
 async def _main(proc, args, kwargs):
     async with main_scope():
         return await proc(*args, **kwargs)
+
 
 def run(proc, *args, **kwargs):
     return anyio.run(_main, proc, args, kwargs, backend="trio")
