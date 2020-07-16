@@ -465,7 +465,7 @@ async def register(data: Any):
     return await scope.get().register(data)
 
 
-def requires(self, s: Scope):
+def requires(s: Scope):
     """
     This scope requires another (already existing) scope in order to function.
     """
