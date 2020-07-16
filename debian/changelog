@@ -1,4 +1,10 @@
-asyncscope (0.1.0-1) smurf; urgency=low
+asyncscope (0.1.1-1) unstable; urgency=medium
+
+  * Merged
+
+ -- Matthias Urlichs <matthias@urlichs.de>  Thu, 16 Jul 2020 13:21:54 +0200
+
+asyncscope (0.1.0-1) unstable; urgency=low
 
   * source package automatically created by stdeb 0.9.1
 

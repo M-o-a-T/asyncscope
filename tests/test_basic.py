@@ -2,17 +2,12 @@ import anyio
 from asyncscope import (
     spawn,
     spawn_service,
-    run,
-    Scope,
-    scope,
-    main_scope,
     ScopeSet,
     register,
     service,
     no_more_dependents,
 )
 from . import Stepper
-from contextlib import asynccontextmanager
 import pytest
 from random import random
 
