@@ -1,2 +1,4 @@
 __pycache__/
 /.pybuild/
+/asyncscope.egg-info/
+/dist/
