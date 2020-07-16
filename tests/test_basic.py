@@ -81,7 +81,6 @@ async def test_main_error_a():
             await _done.wait()
             await anyio.sleep(0.3)
             raise RuntimeError("Bye")
-            await anyio.sleep(99)
         finally:
             await dly()
             stp(1)
