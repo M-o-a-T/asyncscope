@@ -2,22 +2,17 @@ Source: asyncscope
 Maintainer: Matthias Urlichs <matthias@urlichs.de>
 Section: python
 Priority: optional
-Build-Depends: dh-python, python3-setuptools, python3-all, debhelper (>= 9)
+Build-Depends: dh-python, python3-setuptools, python3-all, debhelper (>= 13),
+  python3-anyio (>= 1.4),
 Standards-Version: 3.9.6
 Homepage: http://github.com/M-o-a-T/asyncscope
 
 Package: python3-asyncscope
 Architecture: all
-Depends: ${misc:Depends}, ${python3:Depends}
+Depends: ${misc:Depends}, ${python3:Depends},
+  python3-anyio (>= 1.4),
 Description: Task scopes for AnyIO
- ==========
- asyncscope
- ==========
- .
- This library implements scoped taskgroups / nurseries.
- .
- Rationale
- =========
+ This library implements scoped taskgroups.
  .
  Large programs often consist of building blocks which depend on each other.
  Crucially, these blocks may get started in FIFO order: you start the main
