@@ -210,7 +210,7 @@ class Scope:
         if self is s:
             return
         if self._set is not s._set:
-            raise RuntimeError("Parts of different ScopeSets may not depend on each other")
+            raise RuntimeError(f"{self}/{self._set} disparate to {s}/{s._set}")
         s.may_not_require(self)
         self._prev.add(s)
         s._next.add(self)
@@ -313,12 +313,13 @@ class Scope:
         return id(self) == id(other)
 
     def __repr__(self):
-        return "<%s %r>" % (self.__class__.__name__, self._name)
+        return "<%s %s>" % (self.__class__.__name__, self._name)
 
 
 class ScopeSet:
     _tg = None
     _ctx_ = None
+    _main_name: str = None
 
     def __init__(self, name: str = None):
         self._scopes: Dict[str, Scope] = dict()
@@ -339,9 +340,8 @@ class ScopeSet:
             _name_ = proc.__name__
 
         async def _service(s, proc, args, kwargs):
-            async with anyio.open_cancel_scope(shield=True):
-                async with s._ctx():
-                    await proc(*args, **kwargs)
+            async with anyio.open_cancel_scope(shield=True), s._ctx():
+                await proc(*args, **kwargs)
 
         s = Scope(self, _name_)
         self._scopes[_name_] = s
@@ -387,6 +387,8 @@ class ScopeSet:
                     yield s
                 finally:
                     del self._scopes[s._name]
+            pass  # end scope context
+        pass  # end taskgroup
 
         # At this point `self._scopes` shall be empty
 
@@ -398,6 +400,9 @@ class ScopeSet:
 
     async def __aexit__(self, *tb):
         return await self._ctx_.__aexit__(*tb)  # pylint:disable=no-member  # YES IT HAS
+
+    def __repr__(self):
+        return "<%s %s>" % (self.__class__.__name__, self._main_name)
 
 
 async def spawn_service(proc, *args, **kwargs):
@@ -497,3 +502,4 @@ async def main_scope(name="_main"):
         finally:
             await s.cancel_dependents()  # should not be any but …
             await s.cancel()
+    pass  # end main scope
