@@ -61,10 +61,11 @@ async def test_main_error_a():
     async def serv_c(stp):
         try:
             await anyio.sleep(0.1)
-            raise RuntimeError("Bye")
+            await _done.set()
+            await anyio.sleep(99)
         finally:
             await dly()
-            stp(1)
+            stp(3)
 
     async def serv_b(stp):
         try:
@@ -72,15 +73,17 @@ async def test_main_error_a():
             await anyio.sleep(99)
         finally:
             await dly()
-            stp(3)
+            stp(2)
 
     async def main_a(stp):
         try:
             await spawn_service(serv_b, stp)
-            await anyio.sleep(99)
+            await _done.wait()
+            await anyio.sleep(0.3)
+            raise RuntimeError("Bye")
         finally:
             await dly()
-            stp(2)
+            stp(1)
 
     global _done
     _done = anyio.create_event()
