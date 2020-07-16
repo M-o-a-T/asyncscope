@@ -19,7 +19,7 @@ Start a service task (i.e. something you depend on) with
 ``asyncscope.spawn_service``. Start a subtask which should run in parallel
 and which you're going to wait on with ``asyncscope.spawn``.
 
-Scope objects are handled in the background, though you are free to 
+Scope objects are handled in the background, though you are free to
 create one.
 
 """
@@ -29,7 +29,7 @@ import anyio
 import anyio.abc
 from contextvars import ContextVar
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, Set, Dict
 
 __all__ = ["run"]
 
@@ -224,7 +224,6 @@ class Scope:
 
         Ordered top-down.
         """
-        todo = set(self._next)
         seen = set()
 
         def deps(s):
@@ -283,7 +282,7 @@ class Scope:
     async def cancel(self):
         """
         Cancel this scope.
-        
+
         Do not call directly!
         """
         if self._tg:
@@ -385,7 +384,7 @@ class ScopeSet:
         return await self._ctx_.__aenter__()
 
     async def __aexit__(self, *tb):
-        return await self._ctx_.__aexit__(*tb)
+        return await self._ctx_.__aexit__(*tb)  # pylint:disable=no-member  # YES IT HAS
 
 
 async def spawn_service(proc, *args, **kwargs):
