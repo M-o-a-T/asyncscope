@@ -319,7 +319,7 @@ class Scope:
 class ScopeSet:
     _tg = None
     _ctx_ = None
-    _main_name:str = None
+    _main_name: str = None
 
     def __init__(self, name: str = None):
         self._scopes: Dict[str, Scope] = dict()
@@ -403,6 +403,7 @@ class ScopeSet:
 
     def __repr__(self):
         return "<%s %s>" % (self.__class__.__name__, self._main_name)
+
 
 async def spawn_service(proc, *args, **kwargs):
     """
@@ -501,4 +502,4 @@ async def main_scope(name="_main"):
         finally:
             await s.cancel_dependents()  # should not be any but …
             await s.cancel()
-    pass # end main scope
+    pass  # end main scope
