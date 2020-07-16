@@ -31,8 +31,6 @@ from contextvars import ContextVar
 from contextlib import asynccontextmanager
 from typing import Any, Set, Dict
 
-__all__ = ["run"]
-
 scope = ContextVar("scope", default=None)
 
 
@@ -320,8 +318,9 @@ class ScopeSet:
     _tg = None
     _ctx_ = None
 
-    def __init__(self):
+    def __init__(self, name: str = None):
         self._scopes: Dict[str, Scope] = dict()
+        self._main_name = name
 
     async def spawn(self, proc, *args, _name_: str = None, _by_: Scope = None, **kwargs):
         """
@@ -377,7 +376,7 @@ class ScopeSet:
         """
         Context manager for a new scope set
         """
-        s = Scope(self, "_main", new=True)
+        s = Scope(self, self._main_name, new=True)
         async with anyio.create_task_group() as tg:
             self._tg = tg
             async with s._ctx():
@@ -483,10 +482,9 @@ async def main_scope(name="_main"):
     can start service tasks in.
     """
 
-    async with anyio.create_task_group() as tg, ScopeSet() as s:
+    async with ScopeSet(name=name) as s:
         try:
             yield s
         finally:
             await s.cancel_dependents()  # should not be any but …
             await s.cancel()
-
