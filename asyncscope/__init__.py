@@ -171,12 +171,13 @@ class Scope:
                     async with anyio.open_cancel_scope(shield=True):
                         await self.cancel_immediate()
         finally:
-            scope.reset(self._scope)
-            await self._data_lock.set()
-            async with anyio.open_cancel_scope(shield=True):
-                await self._done.set()
-                for p in list(self._prev):
-                    await self.release(p)
+            if self._scope is not None:  # error in setup
+                scope.reset(self._scope)
+                await self._data_lock.set()
+                async with anyio.open_cancel_scope(shield=True):
+                    await self._done.set()
+                    for p in list(self._prev):
+                        await self.release(p)
             self._tg = None
             self._scope = None
 
