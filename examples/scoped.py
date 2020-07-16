@@ -1,13 +1,12 @@
 
-import trio
-from trio_scope import spawn, spawn_service, run, Scope, scope, main_scope
+import anyio
+from asyncscope import spawn, spawn_service, run, Scope, scope, main_scope
 from contextlib import asynccontextmanager
 
 _done = None
 
 sub_scope=False
 with_error = False
-
 
 @asynccontextmanager
 async def maybe(p,*x):
@@ -18,20 +17,19 @@ async def maybe(p,*x):
         yield "foo"
 
 async def dly():
-    with trio.CancelScope() as sc:
-        sc.shield = True
-        await trio.sleep(0.1)
+    async with anyio.open_cancel_scope(shield=True):
+        await anyio.sleep(0.02)
 
 async def serv_c():
     print("serv_c: startup")
     try:
         print("serv_c: sleep")
-        await trio.sleep(1)
+        await anyio.sleep(0.1)
         if with_error:
             raise RuntimeError("Bye")
         print("serv_c: set _done")
-        _done.set()
-        await trio.sleep(999)
+        await _done.set()
+        await anyio.sleep(999)
     finally:
         await dly()
         print("serv_c: end")
@@ -41,7 +39,7 @@ async def serv_b():
     try:
         await spawn_service(serv_c)
         print("serv_b: sleep")
-        await trio.sleep(999)
+        await anyio.sleep(999)
     finally:
         await dly()
         print("serv_b: end")
@@ -52,7 +50,7 @@ async def main_a():
         async with maybe(main_scope,"test"):
             await spawn_service(serv_b)
             print("main_a: sleep")
-            await trio.sleep(999)
+            await anyio.sleep(999)
     finally:
         await dly()
         print("main_a: end")
@@ -60,7 +58,7 @@ async def main_a():
 async def main():
     print("main: startup")
     global _done
-    _done = trio.Event()
+    _done = anyio.create_event()
 
     await spawn(main_a)
 
