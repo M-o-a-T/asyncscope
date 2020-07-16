@@ -319,6 +319,7 @@ class Scope:
 class ScopeSet:
     _tg = None
     _ctx_ = None
+    _main_name:str = None
 
     def __init__(self, name: str = None):
         self._scopes: Dict[str, Scope] = dict()
