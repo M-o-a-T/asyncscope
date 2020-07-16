@@ -1,0 +1,33 @@
+Source: asyncscope
+Maintainer: Matthias Urlichs <matthias@urlichs.de>
+Section: python
+Priority: optional
+Build-Depends: dh-python, python3-setuptools, python3-all, debhelper (>= 9)
+Standards-Version: 3.9.6
+Homepage: http://github.com/M-o-a-T/asyncscope
+
+Package: python3-asyncscope
+Architecture: all
+Depends: ${misc:Depends}, ${python3:Depends}
+Description: Task scopes for AnyIO
+ ==========
+ asyncscope
+ ==========
+ .
+ This library implements scoped taskgroups / nurseries.
+ .
+ Rationale
+ =========
+ .
+ Large programs often consist of building blocks which depend on each other.
+ Crucially, these blocks may get started in FIFO order: you start the main
+ program which starts a mid-level support task which starts a low-level
+ connection. Then it stats another mid-level task which starts a low-level
+ task which uses the same connection … you get the idea: these relationships
+ typically form a DAG (directed acyclic graph).
+ .
+ In order to cleanly terminate this, the main program must be cancelled
+ first (so that it may clean up after itself), *then* the mid-level stuff
+ (data conversion, error reporting …) gets torn down, *then* the
+ low-level connection (database, MQTT, …).
+
