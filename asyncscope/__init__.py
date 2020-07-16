@@ -340,9 +340,8 @@ class ScopeSet:
             _name_ = proc.__name__
 
         async def _service(s, proc, args, kwargs):
-            async with anyio.open_cancel_scope(shield=True):
-                async with s._ctx():
-                    await proc(*args, **kwargs)
+            async with anyio.open_cancel_scope(shield=True), s._ctx():
+                await proc(*args, **kwargs)
 
         s = Scope(self, _name_)
         self._scopes[_name_] = s
