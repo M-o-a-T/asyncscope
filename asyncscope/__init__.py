@@ -402,7 +402,7 @@ async def spawn_service(proc, *args, **kwargs):
 
 async def spawn(proc, *args, **kwargs):
     """
-    Run 'proc' as a subtask in the current scope.
+    Run 'proc' as a subtask of the current scope.
 
     Returns: a cancel scope, useable to cancel this subtask.
     """
@@ -456,22 +456,16 @@ async def no_more_dependents():
 
 
 @asynccontextmanager
-async def main_scope(_name_="main"):
+async def main_scope(name="_main"):
     """
     This context manager provides you with a new "main" scope, i.e. one you
     can start service tasks in.
     """
-    async with anyio.create_task_group() as tg, Scope(tg, _name_, new=True)._ctx() as s:
+
+    async with anyio.create_task_group() as tg, ScopeSet() as s:
         try:
             yield s
         finally:
-            await s.cancel_dependents()
+            await s.cancel_dependents()  # should not be any but …
+            await s.cancel()
 
-
-async def _main(proc, args, kwargs):
-    async with main_scope():
-        return await proc(*args, **kwargs)
-
-
-def run(proc, *args, **kwargs):
-    return anyio.run(_main, proc, args, kwargs, backend="trio")
