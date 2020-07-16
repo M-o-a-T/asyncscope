@@ -465,6 +465,13 @@ async def register(data: Any):
     return await scope.get().register(data)
 
 
+def requires(self, s: Scope):
+    """
+    This scope requires another (already existing) scope in order to function.
+    """
+    return scope.get().requires(s)
+
+
 async def no_more_dependents():
     """
     Wait until all of your dependents are gone.
