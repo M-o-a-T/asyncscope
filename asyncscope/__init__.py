@@ -207,6 +207,8 @@ class Scope:
         """
         This scope requires another (already existing) scope in order to function.
         """
+        if self is s:
+            return
         if self._set is not s._set:
             raise RuntimeError("Parts of different ScopeSets may not depend on each other")
         s.may_not_require(self)
