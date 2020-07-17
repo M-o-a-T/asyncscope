@@ -1,12 +1,5 @@
 import anyio
-from asyncscope import (
-    spawn,
-    spawn_service,
-    ScopeSet,
-    register,
-    service,
-    no_more_dependents,
-)
+from asyncscope import scope, ScopeSet
 from . import Stepper
 import pytest
 from random import random
@@ -32,7 +25,7 @@ async def test_main():
 
     async def serv_b(stp):
         try:
-            await spawn_service(serv_c, stp)
+            await scope.spawn_service(serv_c, stp)
             await anyio.sleep(999)
         finally:
             await dly()
@@ -40,7 +33,7 @@ async def test_main():
 
     async def main_a(stp):
         try:
-            await spawn_service(serv_b, stp)
+            await scope.spawn_service(serv_b, stp)
             await anyio.sleep(999)
         finally:
             await dly()
@@ -50,7 +43,7 @@ async def test_main():
     _done = anyio.create_event()
     async with ScopeSet():
         stp = Stepper()
-        await spawn(main_a, stp)
+        await scope.spawn(main_a, stp)
         await _done.wait()
     # Leaving the ScopeSet triggers a controlled cancellation
     stp(4)
@@ -69,7 +62,7 @@ async def test_main_error_a():
 
     async def serv_b(stp):
         try:
-            await spawn_service(serv_c, stp)
+            await scope.spawn_service(serv_c, stp)
             await anyio.sleep(99)
         finally:
             await dly()
@@ -77,7 +70,7 @@ async def test_main_error_a():
 
     async def main_a(stp):
         try:
-            await spawn_service(serv_b, stp)
+            await scope.spawn_service(serv_b, stp)
             await _done.wait()
             await anyio.sleep(0.3)
             raise RuntimeError("Bye")
@@ -90,7 +83,7 @@ async def test_main_error_a():
     with pytest.raises(RuntimeError) as e:
         async with ScopeSet():
             stp = Stepper()
-            await spawn(main_a, stp)
+            await scope.spawn(main_a, stp)
             await _done.wait()
             await anyio.sleep(99)
     assert e.value.args == ("Bye",)
@@ -108,7 +101,7 @@ async def test_diamond():
         try:
             steps(1)
             await anyio.sleep(0.1)
-            await register("D")
+            await scope.register("D")
             await _done.set()
             await anyio.sleep(999)
         finally:
@@ -118,8 +111,8 @@ async def test_diamond():
     async def serv_c():
         try:
             steps(100)
-            await service("D", serv_d)
-            await register("C")
+            await scope.service("D", serv_d)
+            await scope.register("C")
             await anyio.sleep(999)
         finally:
             await dly()
@@ -128,13 +121,13 @@ async def test_diamond():
     async def serv_b():
         try:
             steps(10000)
-            c1 = await service("C2", serv_c)
-            c2 = await service("C1", serv_c)
-            await register("B")
+            c1 = await scope.service("C2", serv_c)
+            c2 = await scope.service("C1", serv_c)
+            await scope.register("B")
             assert c1 == "C"
             assert c2 == "C"
             async with anyio.fail_after(9):
-                await no_more_dependents()
+                await scope.no_more_dependents()
             steps(100_000)
         finally:
             await dly()
@@ -142,8 +135,8 @@ async def test_diamond():
     async def main_a(evt):
         try:
             steps(1_000_000)
-            b1 = await service("B1", serv_b)
-            b2 = await service("B2", serv_b)
+            b1 = await scope.service("B1", serv_b)
+            b2 = await scope.service("B2", serv_b)
             await evt.set()
             assert b1 == "B"
             assert b2 == "B"
@@ -156,7 +149,7 @@ async def test_diamond():
     _done = anyio.create_event()
     async with ScopeSet():
         evt = anyio.create_event()
-        await spawn(main_a, evt)
+        await scope.spawn(main_a, evt)
         await evt.wait()
         await _done.wait()
     # Leaving the ScopeSet triggers a controlled cancellation

@@ -1,6 +1,6 @@
 
 import anyio
-from asyncscope import spawn, spawn_service, Scope, scope, main_scope
+from asyncscope import scope, main_scope
 from contextlib import asynccontextmanager
 
 _done = None
@@ -37,7 +37,7 @@ async def serv_c():
 async def serv_b():
     print("serv_b: startup")
     try:
-        await spawn_service(serv_c)
+        await scope.spawn_service(serv_c)
         print("serv_b: sleep")
         await anyio.sleep(999)
     finally:
@@ -48,7 +48,7 @@ async def main_a():
     print("main_a: startup")
     try:
         async with maybe(main_scope):
-            await spawn_service(serv_b)
+            await scope.spawn_service(serv_b)
             print("main_a: sleep")
             await anyio.sleep(999)
     finally:
@@ -61,7 +61,7 @@ async def main():
     _done = anyio.create_event()
 
     async with main_scope():
-        await spawn(main_a)
+        await scope.spawn(main_a)
 
         print("main: waiting")
         await _done.wait()

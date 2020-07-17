@@ -29,13 +29,25 @@ import anyio
 import anyio.abc
 from contextvars import ContextVar
 from contextlib import asynccontextmanager
+from collections import defaultdict
 from typing import Any, Set, Dict
 
-scope = ContextVar("scope", default=None)
+_scope = ContextVar("scope", default=None)
+
+
+class _ScopeProxy:
+    def get(self):
+        return _scope.get()
+
+    def __getattr__(self, k):
+        return getattr(_scope.get(), k)
+
+
+scope = _ScopeProxy()
 
 
 class Scope:
-    _next: Set[Scope] = None
+    _next: Dict[Scope, int] = None
     _prev: Set[Scope] = None
     _done: anyio.abc.Event = None
     _scope = None
@@ -54,7 +66,7 @@ class Scope:
     _no_more: anyio.abc.Lock = None
 
     def __init__(self, scopeset: ScopeSet, name: str, new: bool = False):
-        self._next = set()
+        self._next = defaultdict(lambda: 0)
         self._prev = set()
         self._set = scopeset
         self._name = name
@@ -101,13 +113,7 @@ class Scope:
         """
         return await self._set.spawn(proc, *args, **kwargs)
 
-    async def service(self, name, proc, *args, **kwargs):
-        """
-        Start this service as a dependent context if it doesn't run
-        already.
-
-        Returns: the data which the service registers / has registered.
-        """
+    async def _service(self, name, proc, args, kwargs):
         try:
             s = self._set[name]
         except KeyError:
@@ -115,7 +121,37 @@ class Scope:
         else:
             self.requires(s)
         await s._data_lock.wait()
+        return s
+
+    async def service(self, name, proc, *args, **kwargs):
+        """
+        Start this service as a dependent context if it doesn't run
+        already.
+
+        Returns: the data which the service registers / has registered.
+
+        Call ``release(name)`` when you no longer need the service.
+        (This will happen automatically when your scope ends.)
+        """
+        s = await self._service(name, proc, args, kwargs)
         return s._data
+
+    @asynccontextmanager
+    async def using_service(self, name, proc, *args, **kwargs):
+        """
+        This is a context manager which starts / uses this service as
+        a dependent context.
+
+        The service is started if it doesn't currently run, and stopped
+        when the last user leaves its context.
+
+        Returns: the data which the service registers / has registered.
+        """
+        s = await self._service(name, proc, args, kwargs)
+        try:
+            yield s._data
+        finally:
+            await self.release(s)
 
     def lookup(self, name):
         """
@@ -165,8 +201,8 @@ class Scope:
             raise RuntimeError("You can't enter a scope twice")
         try:
             self._set[self._name] = self
-            os = scope.get()
-            self._scope = scope.set(self)
+            os = _scope.get()
+            self._scope = _scope.set(self)
             async with anyio.create_task_group() as tg:
                 self._tg = tg
 
@@ -181,12 +217,12 @@ class Scope:
                         await self.cancel_immediate()
         finally:
             if self._scope is not None:  # error in setup
-                scope.reset(self._scope)
+                _scope.reset(self._scope)
                 await self._data_lock.set()
                 async with anyio.open_cancel_scope(shield=True):
                     await self._done.set()
                     for p in list(self._prev):
-                        await self.release(p)
+                        await self.release(p, dead=True)
             self._tg = None
             self._scope = None
 
@@ -211,18 +247,32 @@ class Scope:
             return
         if self._set is not s._set:
             raise RuntimeError(f"{self}/{self._set} disparate to {s}/{s._set}")
+        if s in self._prev:
+            assert s._next[self] > 0
+            s._next[self] += 1
+            return
         s.may_not_require(self)
         self._prev.add(s)
-        s._next.add(self)
+        s._next[self] += 1
 
-    async def release(self, s: Scope):
+    async def release(self, s: Scope, dead: bool = False):
         """
         This scope no longer requires another.
 
         The other scope is cancelled if it no longer has any dependents.
+
+        Set ``dead``
         """
+        if self not in s._next:
+            # happens when somebody called with dead=True
+            return
+        assert s._next[self] > 0
+        if not dead:
+            s._next[self] -= 1
+            if s._next[self]:
+                return
+        del s._next[self]
         self._prev.remove(s)
-        s._next.remove(self)
         if not s._next:
             if s._no_more is None:
                 await s.cancel()
@@ -242,11 +292,11 @@ class Scope:
             if s in seen:
                 return
             seen.add(s)
-            for n in s._next - seen:
+            for n in set(s._next) - seen:
                 yield from deps(n)
             yield s
 
-        for n in list(self._next):
+        for n in list(self._next.keys()):
             yield from deps(n)
 
     async def no_more_dependents(self):
@@ -320,9 +370,13 @@ class ScopeSet:
     _tg = None
     _ctx_ = None
     _main_name: str = None
+    _seq = 0
 
     def __init__(self, name: str = None):
         self._scopes: Dict[str, Scope] = dict()
+        if name is None:
+            type(self)._seq += 1
+            name = "_main_%d" % (type(self)._seq)
         self._main_name = name
 
     async def spawn(self, proc, *args, _name_: str = None, _by_: Scope = None, **kwargs):
@@ -403,90 +457,6 @@ class ScopeSet:
 
     def __repr__(self):
         return "<%s %s>" % (self.__class__.__name__, self._main_name)
-
-
-async def spawn_service(proc, *args, **kwargs):
-    """
-    Run 'proc' in a new service scope, i.e. one that should end *after* the
-    current scope terminates.
-
-    Special arguments:
-        _name_: Name for the new scope
-
-    Returns: the new scope.
-    """
-    return await scope.get().spawn_service(proc, *args, **kwargs)
-
-
-async def spawn(proc, *args, **kwargs):
-    """
-    Run 'proc' as a subtask of the current scope.
-
-    Returns: a cancel scope, useable to cancel this subtask.
-    """
-    return await scope.get().spawn(proc, *args, **kwargs)
-
-
-async def service(name, proc, *args, **kwargs):
-    """
-    Start this service as a dependent context if it doesn't run
-    already.
-
-    Returns: the data which the service registers / has registered.
-    """
-    return await scope.get().service(name, proc, *args, **kwargs)
-
-
-def lookup(name):
-    """
-    Return the data associated with some scope.
-
-    Raises KeyError if the named scope doesn't exist or has not
-    provided any data.
-
-    Use this if you need a temporary reference to the data of a scope which
-    might depend on the current one.
-    """
-    return scope.get().lookup(name)
-
-
-def lookup_scope(name):
-    """
-    Return the scope associated with some name.
-
-    Raises KeyError if the named scope doesn't exist.
-
-    Use this if you need to add a dependency.
-    """
-    return scope.get().lookup(name)
-
-
-async def register(data: Any):
-    """
-    Register some data with this scope.
-
-    The data is returned by calls to `service` from other scopes.
-    """
-    return await scope.get().register(data)
-
-
-def requires(s: Scope):
-    """
-    This scope requires another (already existing) scope in order to function.
-    """
-    return scope.get().requires(s)
-
-
-async def no_more_dependents():
-    """
-    Wait until all of your dependents are gone.
-
-    Call this if you want to clean up in a controlled way instead of
-    getting cancelled.
-
-    You *must* terminate your scope if this returns!
-    """
-    return await scope.get().no_more_dependents()
 
 
 @asynccontextmanager
