@@ -29,13 +29,14 @@ import anyio
 import anyio.abc
 from contextvars import ContextVar
 from contextlib import asynccontextmanager
+from collections import defaultdict
 from typing import Any, Set, Dict
 
 scope = ContextVar("scope", default=None)
 
 
 class Scope:
-    _next: Set[Scope] = None
+    _next: Dict[Scope, int] = None
     _prev: Set[Scope] = None
     _done: anyio.abc.Event = None
     _scope = None
@@ -54,7 +55,7 @@ class Scope:
     _no_more: anyio.abc.Lock = None
 
     def __init__(self, scopeset: ScopeSet, name: str, new: bool = False):
-        self._next = set()
+        self._next = defaultdict(lambda: 0)
         self._prev = set()
         self._set = scopeset
         self._name = name
@@ -210,7 +211,7 @@ class Scope:
                 async with anyio.open_cancel_scope(shield=True):
                     await self._done.set()
                     for p in list(self._prev):
-                        await self.release(p)
+                        await self.release(p, dead=True)
             self._tg = None
             self._scope = None
 
@@ -235,18 +236,32 @@ class Scope:
             return
         if self._set is not s._set:
             raise RuntimeError(f"{self}/{self._set} disparate to {s}/{s._set}")
+        if s in self._prev:
+            assert s._next[self] > 0
+            s._next[self] += 1
+            return
         s.may_not_require(self)
         self._prev.add(s)
-        s._next.add(self)
+        s._next[self] += 1
 
-    async def release(self, s: Scope):
+    async def release(self, s: Scope, dead: bool = False):
         """
         This scope no longer requires another.
 
         The other scope is cancelled if it no longer has any dependents.
+
+        Set ``dead``
         """
+        if self not in s._next:
+            # happens when somebody called with dead=True
+            return
+        assert s._next[self] > 0
+        if not dead:
+            s._next[self] -= 1
+            if s._next[self]:
+                return
+        del s._next[self]
         self._prev.remove(s)
-        s._next.remove(self)
         if not s._next:
             if s._no_more is None:
                 await s.cancel()
@@ -266,11 +281,11 @@ class Scope:
             if s in seen:
                 return
             seen.add(s)
-            for n in s._next - seen:
+            for n in set(s._next) - seen:
                 yield from deps(n)
             yield s
 
-        for n in list(self._next):
+        for n in list(self._next.keys()):
             yield from deps(n)
 
     async def no_more_dependents(self):
