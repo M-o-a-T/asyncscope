@@ -344,9 +344,13 @@ class ScopeSet:
     _tg = None
     _ctx_ = None
     _main_name: str = None
+    _seq = 0
 
     def __init__(self, name: str = None):
         self._scopes: Dict[str, Scope] = dict()
+        if name is None:
+            type(self)._seq += 1
+            name = "_main_%d" % (type(self)._seq)
         self._main_name = name
 
     async def spawn(self, proc, *args, _name_: str = None, _by_: Scope = None, **kwargs):
