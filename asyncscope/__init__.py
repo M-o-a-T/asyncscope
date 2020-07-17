@@ -101,13 +101,7 @@ class Scope:
         """
         return await self._set.spawn(proc, *args, **kwargs)
 
-    async def service(self, name, proc, *args, **kwargs):
-        """
-        Start this service as a dependent context if it doesn't run
-        already.
-
-        Returns: the data which the service registers / has registered.
-        """
+    async def _service(self, name, proc, args, kwargs):
         try:
             s = self._set[name]
         except KeyError:
@@ -115,7 +109,37 @@ class Scope:
         else:
             self.requires(s)
         await s._data_lock.wait()
+        return s
+
+    async def service(self, name, proc, *args, **kwargs):
+        """
+        Start this service as a dependent context if it doesn't run
+        already.
+
+        Returns: the data which the service registers / has registered.
+
+        Call ``release(name)`` when you no longer need the service.
+        (This will happen automatically when your scope ends.)
+        """
+        s = await self._service(name, proc, args, kwargs)
         return s._data
+
+    @asynccontextmanager
+    async def using_service(self, name, proc, *args, **kwargs):
+        """
+        This is a context manager which starts / uses this service as
+        a dependent context.
+
+        The service is started if it doesn't currently run, and stopped
+        when the last user leaves its context.
+
+        Returns: the data which the service registers / has registered.
+        """
+        s = await self._service(name, proc, args, kwargs)
+        try:
+            yield s._data
+        finally:
+            await self.release(s)
 
     def lookup(self, name):
         """
@@ -435,6 +459,17 @@ async def service(name, proc, *args, **kwargs):
     Returns: the data which the service registers / has registered.
     """
     return await scope.get().service(name, proc, *args, **kwargs)
+
+
+async def using_service(name, proc, *args, **kwargs):
+    """
+    This is a context manager which starts / uses this service
+    a dependent context. The service is started if it doesn't currently
+    run, and stopped when the last user leaves the context.
+
+    Returns: the data which the service registers / has registered.
+    """
+    return await scope.get().using_service(name, proc, *args, **kwargs)
 
 
 def lookup(name):
