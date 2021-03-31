@@ -8,7 +8,7 @@ _done = None
 
 
 async def dly():
-    async with anyio.open_cancel_scope(shield=True):
+    with anyio.CancelScope(shield=True):
         await anyio.sleep(0.02 + random() * 0.05)
 
 
@@ -17,7 +17,7 @@ async def test_main():
     async def serv_c(stp):
         try:
             await anyio.sleep(0.1)
-            await _done.set()
+            _done.set()
             await anyio.sleep(999)
         finally:
             await dly()
@@ -40,7 +40,7 @@ async def test_main():
             stp(1)
 
     global _done
-    _done = anyio.create_event()
+    _done = anyio.Event()
     async with ScopeSet():
         stp = Stepper()
         await scope.spawn(main_a, stp)
@@ -54,7 +54,7 @@ async def test_main_error_a():
     async def serv_c(stp):
         try:
             await anyio.sleep(0.1)
-            await _done.set()
+            _done.set()
             await anyio.sleep(99)
         finally:
             await dly()
@@ -79,7 +79,7 @@ async def test_main_error_a():
             stp(1)
 
     global _done
-    _done = anyio.create_event()
+    _done = anyio.Event()
     with pytest.raises(RuntimeError) as e:
         async with ScopeSet():
             stp = Stepper()
@@ -102,7 +102,7 @@ async def test_diamond():
             steps(1)
             await anyio.sleep(0.1)
             await scope.register("D")
-            await _done.set()
+            _done.set()
             await anyio.sleep(999)
         finally:
             await dly()
@@ -126,7 +126,7 @@ async def test_diamond():
             await scope.register("B")
             assert c1 == "C"
             assert c2 == "C"
-            async with anyio.fail_after(9):
+            with anyio.fail_after(9):
                 await scope.no_more_dependents()
             steps(100_000)
         finally:
@@ -137,7 +137,7 @@ async def test_diamond():
             steps(1_000_000)
             b1 = await scope.service("B1", serv_b)
             b2 = await scope.service("B2", serv_b)
-            await evt.set()
+            evt.set()
             assert b1 == "B"
             assert b2 == "B"
 
@@ -146,9 +146,9 @@ async def test_diamond():
             steps(10_000_000)
 
     global _done
-    _done = anyio.create_event()
+    _done = anyio.Event()
     async with ScopeSet():
-        evt = anyio.create_event()
+        evt = anyio.Event()
         await scope.spawn(main_a, evt)
         await evt.wait()
         await _done.wait()

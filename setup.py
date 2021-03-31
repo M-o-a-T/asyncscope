@@ -13,7 +13,7 @@ setup(
     author_email="matthias@urlichs.de",
     license="GPLv3 or later",
     packages=find_packages(),
-    install_requires=["anyio >= 1.4", "trio >= 0.16"],
+    install_requires=["anyio >= 3", "trio >= 0.17"],
     keywords=["async"],
     python_requires=">=3.6",
     classifiers=[
