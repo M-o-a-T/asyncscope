@@ -70,9 +70,9 @@ class Scope:
         self._prev = set()
         self._set = scopeset
         self._name = name
-        self._done = anyio.create_event()
+        self._done = anyio.Event()
         self._new = new
-        self._data_lock = anyio.create_event()
+        self._data_lock = anyio.Event()
 
     async def spawn(self, proc, *args, **kwargs):
         """
@@ -92,12 +92,12 @@ class Scope:
             back to the caller.
             """
             nonlocal _scope
-            async with anyio.open_cancel_scope() as _scope:
-                await evt.set()
+            with anyio.CancelScope() as _scope:
+                evt.set()
                 await proc(*a, **kw)
 
-        evt = anyio.create_event()
-        await self._tg.spawn(_run, proc, args, kwargs, evt)
+        evt = anyio.Event()
+        self._tg.spawn(_run, proc, args, kwargs, evt)
         await evt.wait()
         return _scope
 
@@ -190,7 +190,7 @@ class Scope:
         if self._data_lock.is_set():
             raise RuntimeError("You can't change the registration value")
         self._data = data
-        await self._data_lock.set()
+        self._data_lock.set()
 
     @asynccontextmanager
     async def _ctx(self):
@@ -213,14 +213,14 @@ class Scope:
                     yield self
                 finally:
                     del self._set[self._name]
-                    async with anyio.open_cancel_scope(shield=True):
+                    with anyio.CancelScope(shield=True):
                         await self.cancel_immediate()
         finally:
             if self._scope is not None:  # error in setup
                 _scope.reset(self._scope)
-                await self._data_lock.set()
-                async with anyio.open_cancel_scope(shield=True):
-                    await self._done.set()
+                self._data_lock.set()
+                with anyio.CancelScope(shield=True):
+                    self._done.set()
                     for p in list(self._prev):
                         await self.release(p, dead=True)
             self._tg = None
@@ -275,9 +275,9 @@ class Scope:
         self._prev.remove(s)
         if not s._next:
             if s._no_more is None:
-                await s.cancel()
+                s.cancel()
             else:
-                await s._no_more.set()
+                s._no_more.set()
 
     @property
     def dependents(self):
@@ -311,7 +311,7 @@ class Scope:
         if not self._next:
             return
         try:
-            self._no_more = anyio.create_event()
+            self._no_more = anyio.Event()
             await self._no_more.wait()
         finally:
             self._no_more = None
@@ -325,9 +325,9 @@ class Scope:
         """
         for s in self.dependents:
             if s._no_more is None:
-                await s.cancel()
+                s.cancel()
             else:
-                await s._no_more.set()
+                s._no_more.set()
             await s.wait()
 
     async def cancel_immediate(self):
@@ -338,17 +338,18 @@ class Scope:
         for them to terminate.
         """
         for s in self.dependents:
-            await s.cancel()
-        await self.cancel()
+            s.cancel()
+        self.cancel()
 
-    async def cancel(self):
+    def cancel(self):
         """
         Cancel this scope.
 
         Do not call directly!
         """
         if self._tg:
-            await self._tg.cancel_scope.cancel()
+            self._tg.cancel_scope.cancel()
+        return anyio.DeprecatedAwaitable(self.cancel)
 
     async def wait(self):
         """
@@ -394,14 +395,15 @@ class ScopeSet:
             _name_ = proc.__name__
 
         async def _service(s, proc, args, kwargs):
-            async with anyio.open_cancel_scope(shield=True), s._ctx():
-                await proc(*args, **kwargs)
+            with anyio.CancelScope(shield=True):
+                async with s._ctx():
+                    await proc(*args, **kwargs)
 
         s = Scope(self, _name_)
         self._scopes[_name_] = s
         if _by_:
             _by_.requires(s)
-        await self._tg.spawn(_service, s, proc, args, kwargs)
+        self._tg.spawn(_service, s, proc, args, kwargs)
         return s
 
     def __getitem__(self, key):
@@ -471,5 +473,5 @@ async def main_scope(name="_main"):
             yield s
         finally:
             await s.cancel_dependents()  # should not be any but …
-            await s.cancel()
+            s.cancel()
     pass  # end main scope

@@ -17,7 +17,7 @@ async def maybe(p,*x):
         yield "foo"
 
 async def dly():
-    async with anyio.open_cancel_scope(shield=True):
+    with anyio.CancelScope(shield=True):
         await anyio.sleep(0.02)
 
 async def serv_c():
@@ -28,7 +28,7 @@ async def serv_c():
         if with_error:
             raise RuntimeError("Bye")
         print("serv_c: set _done")
-        await _done.set()
+        _done.set()
         await anyio.sleep(999)
     finally:
         await dly()
@@ -58,7 +58,7 @@ async def main_a():
 async def main():
     print("main: startup")
     global _done
-    _done = anyio.create_event()
+    _done = anyio.Event()
 
     async with main_scope():
         await scope.spawn(main_a)
