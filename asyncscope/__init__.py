@@ -82,24 +82,18 @@ class Scope:
             a cancel scope you can use to stop the task.
         """
 
-        _scope = None
-
-        async def _run(proc, a, kw, evt):
+        async def _run(proc, a, kw, *, task_status):
             """
             Helper for starting a task.
 
             This accepts a :class:`ValueEvent`, to pass the task's cancel scope
             back to the caller.
             """
-            nonlocal _scope
             with anyio.CancelScope() as _scope:
-                evt.set()
+                task_status.started(_scope)
                 await proc(*a, **kw)
 
-        evt = anyio.Event()
-        self._tg.spawn(_run, proc, args, kwargs, evt)
-        await evt.wait()
-        return _scope
+        return await self._tg.start(_run, proc, args, kwargs)
 
     async def spawn_service(self, proc, *args, **kwargs):
         """
