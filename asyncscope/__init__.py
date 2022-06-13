@@ -397,7 +397,7 @@ class ScopeSet:
         self._scopes[_name_] = s
         if _by_:
             _by_.requires(s)
-        self._tg.spawn(_service, s, proc, args, kwargs)
+        await self._tg.spawn(_service, s, proc, args, kwargs)
         return s
 
     def __getitem__(self, key):
