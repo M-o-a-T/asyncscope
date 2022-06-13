@@ -343,7 +343,6 @@ class Scope:
         """
         if self._tg:
             self._tg.cancel_scope.cancel()
-        return anyio.DeprecatedAwaitable(self.cancel)
 
     async def wait(self):
         """
