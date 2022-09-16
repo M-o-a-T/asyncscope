@@ -387,16 +387,17 @@ class ScopeSet:
         if _name_ is None:
             _name_ = proc.__name__
 
-        async def _service(s, proc, args, kwargs):
+        async def _service(s, proc, args, kwargs, *, task_status=None):
             with anyio.CancelScope(shield=True):
                 async with s._ctx():
+                    task_status.started()
                     await proc(*args, **kwargs)
 
         s = Scope(self, _name_)
         self._scopes[_name_] = s
         if _by_:
             _by_.requires(s)
-        await self._tg.spawn(_service, s, proc, args, kwargs)
+        await self._tg.start(_service, s, proc, args, kwargs)
         return s
 
     def __getitem__(self, key):
