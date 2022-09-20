@@ -51,31 +51,38 @@ Usage
 
 Wrap your main code in ``async with main_scope(): ...``.
 
-Start a service task (i.e. something you depend on) with ``srv = await
-service(name, some_service, *params)``. ``srv`` is whatever object the service
-intends you to use.
+Start a service task (i.e. something you depend on) like this::
+
+    from asyncscope import service
+
+    srv = await service(name, some_service, *params)
+
+``srv`` is whatever object the service intends you to use.
+
+Note that ``service`` is **not** used as an async context manager. This is
+intentional; it will be closed when you leave its scope.
 
 The service's setup code typically looks like this::
 
    from asyncscope import scope
 
    async def some_service(*params):
-      s = await start_service(*params)
+      s = await start_your_service(*params)
       await scope.register(s)
       await scope.no_more_dependents()
-      s.close_service_cleanly()
+      s.close_your_service_cleanly()
 
 Alternately, if the service is created by an async context manager::
 
    async def some_service(*params):
-      async with service_context(*params) as s:
+      async with your_service_context(*params) as s:
          await scope.register(s)
          await scope.no_more_dependents()
 
 Every scope has a separate taskgroup which you can access by calling
-``spawn()``. This function returns the new tasks's cancel scope so that you
-can cancel the new task if you need to. All tasks started that way are
-auto-cancelled when your main code exits.
+``scope.spawn()``. This function returns a cancel scope that wraps the new
+tasks, so that you can cancel it if you need to. All tasks started this way
+are also auto-cancelled when the scope exits.
 
 Your service **must** call ``scope.register()`` exactly once,
 otherwise the scopes waiting for it to start will wait forever. (They'll
@@ -106,16 +113,21 @@ Code structure
 
 A scope's main code typically looks like this:
 
-* setup: start other services, 
+* do whatever you need to start the service. This code may start other
+  scopes it depends on. Note that if the scope is already running,
+  ``service`` simply returns its existing service object.
 
 * call "register(serice_object)"
 
 * ``await no_more_dependents()`` (subordinate task) or wait for SIGTERM (daemon main task)
   or terminate (main task's job is done)
 
-* cleanly stop itself
+* cleanly stop your service.
 
 If ``no_more_dependents`` is not used, the scope will be cancelled.
+
+You don't need to manage the scopes you started in the first step.
+`asyncscopes` handles this for you.
 
 Scopes typically don't need to access its own scope object. It's stored in
 a contextvar and can be retrieved via ``scope.get()`` if you need it.
