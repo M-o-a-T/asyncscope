@@ -32,6 +32,8 @@ from contextlib import asynccontextmanager
 from collections import defaultdict
 from typing import Any, Set, Dict
 
+import logging
+
 _scope = ContextVar("scope", default=None)
 
 
@@ -88,6 +90,8 @@ class Scope:
         self._new = new
         self._data_lock = anyio.Event()
 
+        self._logger = logging.getLogger(f"{self._set.logger.name}.{name}")
+
     async def spawn(self, proc, *args, **kwargs):
         """
         Run a task within this scope.
@@ -104,7 +108,13 @@ class Scope:
             """
             with anyio.CancelScope() as _scope:
                 task_status.started(_scope)
-                await proc(*a, **kw)
+                try:
+                    self._logger.debug("Start %s %s %s", proc,a,kw)
+                    await proc(*a, **kw)
+                except BaseException as exc:
+                    self._logger.debug("Err %s %r", proc,exc)
+                else:
+                    self._logger.debug("End %s", proc)
 
         return await self._tg.start(_run, proc, args, kwargs)
 
@@ -124,10 +134,13 @@ class Scope:
         try:
             s = self._set[name]
         except KeyError:
+            self._logger.debug("requires %s", name)
             s = await self.spawn_service(proc, *args, **kwargs, _name_=name, _by_=self)
         else:
+            self._logger.debug("also requires %s", name)
             self.requires(s)
         await s._data_lock.wait()
+        self._logger.debug("%s = %r", name, s._data)
         return s
 
     async def service(self, name, proc, *args, **kwargs):
@@ -196,6 +209,7 @@ class Scope:
         """
         if self._data_lock.is_set():
             raise RuntimeError("You can't change the registration value")
+        self._logger.debug("%s: obj %r", self._name, data)
         self._data = data
         self._data_lock.set()
 
@@ -278,7 +292,12 @@ class Scope:
         if not dead:
             s._next[self] -= 1
             if s._next[self]:
+                self._logger.debug("release %s, in use %d", s._name, s._next[self])
                 return
+            self._logger.debug("release %s, closing")
+        else:
+            self._logger.debug("release %s, dead, in use %d", s._next[self])
+
         del s._next[self]
         self._prev.remove(s)
         if not s._next:
@@ -331,6 +350,7 @@ class Scope:
         XXX cancellation is strictly sequential. Some parallelization might
         be a good idea.
         """
+        self._logger.debug("Cancel dependents")
         for s in self.dependents:
             if s._no_more is None:
                 s.cancel()
@@ -345,6 +365,7 @@ class Scope:
         This will cancel all scopes that depend on this one without waiting
         for them to terminate.
         """
+        self._logger.debug("Cancel Immediate")
         for s in self.dependents:
             s.cancel()
         self.cancel()
@@ -356,13 +377,16 @@ class Scope:
         Do not call directly!
         """
         if self._tg:
+            self._logger.debug("Cancelled")
             self._tg.cancel_scope.cancel()
 
     async def wait(self):
         """
         Wait until this scope has terminated.
         """
+        self._logger.debug("Wait for end")
         await self._done.wait()
+        self._logger.debug("End")
 
     def __hash__(self):
         return id(self)
@@ -384,6 +408,7 @@ class ScopeSet:
     _seq = 0
 
     def __init__(self, name: str = None):
+        self.logger = logging.getLogger(f"scope.{name}")
         self._scopes: Dict[str, Scope] = dict()
         if name is None:
             type(self)._seq += 1
