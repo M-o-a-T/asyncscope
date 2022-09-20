@@ -100,8 +100,7 @@ class Scope:
             """
             Helper for starting a task.
 
-            This accepts a :class:`ValueEvent`, to pass the task's cancel scope
-            back to the caller.
+            The task status passes the task's cancel scope back to the caller.
             """
             with anyio.CancelScope() as _scope:
                 task_status.started(_scope)
@@ -133,8 +132,8 @@ class Scope:
 
     async def service(self, name, proc, *args, **kwargs):
         """
-        Start this service as a dependent context if it doesn't run
-        already.
+        Start this service as a context this scope depends on
+        (if it doesn't run already).
 
         Returns: the data which the service registers / has registered.
 
@@ -236,7 +235,9 @@ class Scope:
 
     def may_not_require(self, s: Scope):
         """
-        Ensure that this scope doesn't require s to function.
+        Assert that this scope doesn't require scope @s.
+
+        Raises `RuntimeError` if it does.
         """
         seen = set()
         todo = set((self,))
@@ -265,11 +266,11 @@ class Scope:
 
     async def release(self, s: Scope, dead: bool = False):
         """
-        This scope no longer requires another.
+        This scope no longer requires @s.
 
-        The other scope is cancelled if it no longer has any dependents.
+        @s is cancelled if it no longer has any dependents.
 
-        Set ``dead``
+        Set @dead if the service running in scope @s is no longer useable.
         """
         if self not in s._next:
             # happens when somebody called with dead=True
@@ -375,6 +376,9 @@ class Scope:
 
 
 class ScopeSet:
+    """
+    This class is the container for the `main_scope` context manager.
+    """
     _tg = None
     _ctx_ = None
     _main_name: str = None
@@ -403,6 +407,7 @@ class ScopeSet:
 
         async def _service(s, proc, args, kwargs, *, task_status=None):
             with anyio.CancelScope(shield=True):
+                # Shielded because cancellation is managed by the scope
                 async with s._ctx():
                     task_status.started()
                     await proc(*args, **kwargs)
@@ -480,6 +485,6 @@ async def main_scope(name="_main"):
         try:
             yield s
         finally:
-            await s.cancel_dependents()  # should not be any but …
+            await s.cancel_dependents()  # there should not be any, but …
             s.cancel()
     pass  # end main scope
