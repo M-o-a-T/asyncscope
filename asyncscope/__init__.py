@@ -158,7 +158,7 @@ class Scope:
         try:
             yield s._data
         finally:
-            await self.release(s)
+            self.release(s)
 
     def lookup(self, name):
         """
@@ -226,10 +226,9 @@ class Scope:
             if self._scope is not None:  # error in setup
                 _scope.reset(self._scope)
                 self._data_lock.set()
-                with anyio.CancelScope(shield=True):
-                    self._done.set()
-                    for p in list(self._prev):
-                        await self.release(p, dead=True)
+                self._done.set()
+                for p in list(self._prev):
+                    self.release(p, dead=True)
             self._tg = None
             self._scope = None
 
@@ -264,7 +263,7 @@ class Scope:
         self._prev.add(s)
         s._next[self] += 1
 
-    async def release(self, s: Scope, dead: bool = False):
+    def release(self, s: Scope, dead: bool = False):
         """
         This scope no longer requires @s.
 
