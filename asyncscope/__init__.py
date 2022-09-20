@@ -222,13 +222,13 @@ class Scope:
             raise RuntimeError("You can't enter a scope twice")
         try:
             self._set[self._name] = self
-            os = _scope.get()
+            current_scope = _scope.get()
             self._scope = _scope.set(self)
             async with anyio.create_task_group() as tg:
                 self._tg = tg
 
-                if not self._new and os is not None:
-                    os.requires(self)
+                if not self._new and current_scope is not None:
+                    current_scope.requires(self)
 
                 try:
                     yield self
