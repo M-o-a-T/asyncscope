@@ -47,23 +47,37 @@ scope = _ScopeProxy()
 
 
 class Scope:
+    # key: the scopes depending on me
     _next: Dict[Scope, int] = None
+
+    # the sets I depend on
     _prev: Set[Scope] = None
+
+    # signal that this scope is closed
     _done: anyio.abc.Event = None
+
+    # caller, to reset the contextcar
     _scope = None
-    # This is the taskgroup that controls the jobs running in this scope
+
+    # Taskgroup that controls the jobs running in this scope
     _tg: anyio.abc.TaskGroup = None
 
-    # This is the taskgroup which contains all linked scopes
+    # Main scope which contains all linked scopes
     _set: ScopeSet = None
+
+    # my name
     _name: str = None
     _new: bool = False
 
     # Data storage for look-up by other modules
     _data: Any = None
+
+    # Signal that the data storage is ready
     _data_lock: anyio.abc.Lock = None
 
-    _no_more: anyio.abc.Lock = None
+    # Signal for controlled shutdown via no_more_dependents
+    _no_more: anyio.abc.Event = None
+    # if None, the scope's taskgroup is cancelled instead
 
     def __init__(self, scopeset: ScopeSet, name: str, new: bool = False):
         self._next = defaultdict(lambda: 0)
