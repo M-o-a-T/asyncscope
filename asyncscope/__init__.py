@@ -304,7 +304,11 @@ class Scope:
             if s._no_more is None:
                 s.cancel()
             else:
-                s._no_more.set()
+                self.no_more()
+
+    async def no_more(self):
+        self._logger.debug("No more users")
+        self._no_more.set()
 
     @property
     def dependents(self):
@@ -355,7 +359,7 @@ class Scope:
             if s._no_more is None:
                 s.cancel()
             else:
-                s._no_more.set()
+                s.no_more()
             await s.wait()
 
     async def cancel_immediate(self):
