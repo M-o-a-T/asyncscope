@@ -442,7 +442,7 @@ class ScopeSet:
 
         s = Scope(self, _name_)
         self._scopes[_name_] = s
-        if _by_:
+        if _by_ is not None:
             _by_.requires(s)
         await self._tg.start(_service, s, proc, args, kwargs)
         return s
@@ -488,6 +488,8 @@ class ScopeSet:
         pass  # end taskgroup
 
         # At this point `self._scopes` shall be empty
+        if self._scopes:
+            raise RuntimeError("Scope st ended but not empty")
 
     async def __aenter__(self):
         if self._ctx_ is not None:
