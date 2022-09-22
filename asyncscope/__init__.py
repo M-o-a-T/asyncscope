@@ -308,14 +308,14 @@ class Scope:
         del self._next[s]
         s._prev.remove(self)
         if not self._next:
-            if self._no_more is None:
-                self.cancel()
-            else:
-                self.no_more()
+            self.no_more()
 
     def no_more(self):
         self._logger.debug("No more users")
-        self._no_more.set()
+        if self._no_more is None:
+            self.cancel()
+        else:
+            self._no_more.set()
 
     @property
     def dependents(self):
@@ -368,10 +368,7 @@ class Scope:
         """
         self._logger.debug("Cancel dependents")
         for s in self.dependents:
-            if s._no_more is None:
-                s.cancel()
-            else:
-                s.no_more()
+            s.no_more()
             await s.wait()
         self._logger.debug("Cancel dependents done")
 
