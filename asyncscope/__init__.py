@@ -350,7 +350,12 @@ class Scope:
             return
         try:
             self._no_more = anyio.Event()
+            self._logger.debug("Wait No more users")
             await self._no_more.wait()
+        except BaseException as exc:
+            self._logger.debug("Wait No more users: %r", exc)
+        else:
+            self._logger.debug("Wait No more users: OK")
         finally:
             self._no_more = None
 
@@ -368,6 +373,7 @@ class Scope:
             else:
                 s.no_more()
             await s.wait()
+        self._logger.debug("Cancel dependents done")
 
     async def cancel_immediate(self):
         """
