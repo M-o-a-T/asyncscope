@@ -296,7 +296,7 @@ class Scope:
                 return
             self._logger.debug("release %s, closing")
         else:
-            self._logger.debug("release %s, dead, in use %d", s._next[self])
+            self._logger.debug("release %s, dead, in use %d", s._name, s._next[self])
 
         del s._next[self]
         self._prev.remove(s)
