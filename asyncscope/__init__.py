@@ -475,7 +475,7 @@ class ScopeSet:
         """
         Context manager for a new scope set
         """
-        s = Scope(self, self._main_name, new=True)
+        s = Scope(self, "_main", new=True)
         async with anyio.create_task_group() as tg:
             self._tg = tg
             async with s._ctx():
