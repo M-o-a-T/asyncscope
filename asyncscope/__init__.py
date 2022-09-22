@@ -298,15 +298,21 @@ class Scope:
         else:
             self._logger.debug("release %s, dead, in use %d", s._name, s._next[self])
 
-        del s._next[self]
-        self._prev.remove(s)
-        if not s._next:
-            if s._no_more is None:
-                s.cancel()
+        s._released(self)
+
+    def _released(self, s: Scope):
+        """
+        @s no longer requires me.
+        """
+        del self._next[s]
+        s._prev.remove(self)
+        if not self._next:
+            if self._no_more is None:
+                self.cancel()
             else:
                 self.no_more()
 
-    async def no_more(self):
+    def no_more(self):
         self._logger.debug("No more users")
         self._no_more.set()
 
