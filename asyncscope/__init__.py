@@ -49,7 +49,8 @@ scope = _ScopeProxy()
 
 
 class Scope:
-    # key: the scopes depending on me
+    # key: the scopes I depend on
+    # val: how often I do – might have been added more than once
     _next: Dict[Scope, int] = None
 
     # the sets I depend on
