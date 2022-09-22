@@ -313,7 +313,7 @@ class Scope:
     def no_more(self):
         self._logger.debug("No more users")
         if self._no_more is None:
-            self.cancel()
+            self._cancel()
         else:
             self._no_more.set()
 
@@ -381,14 +381,12 @@ class Scope:
         """
         self._logger.debug("Cancel Immediate")
         for s in self.dependents:
-            s.cancel()
-        self.cancel()
+            s._cancel()
+        self._cancel()
 
-    def cancel(self):
+    def _cancel(self):
         """
         Cancel this scope.
-
-        Do not call directly!
         """
         if self._tg:
             self._logger.debug("Cancelled")
@@ -526,5 +524,5 @@ async def main_scope(name="_main"):
             yield s
         finally:
             await s.cancel_dependents()  # there should not be any, but …
-            s.cancel()
+            s._cancel()
     pass  # end main scope
