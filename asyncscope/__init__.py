@@ -32,6 +32,8 @@ from contextlib import asynccontextmanager
 from collections import defaultdict
 from typing import Any, Set, Dict
 
+import logging
+
 _scope = ContextVar("scope", default=None)
 
 
@@ -47,23 +49,38 @@ scope = _ScopeProxy()
 
 
 class Scope:
+    # key: the scopes I depend on
+    # val: how often I do – might have been added more than once
     _next: Dict[Scope, int] = None
+
+    # the sets I depend on
     _prev: Set[Scope] = None
+
+    # signal that this scope is closed
     _done: anyio.abc.Event = None
+
+    # caller, to reset the contextcar
     _scope = None
-    # This is the taskgroup that controls the jobs running in this scope
+
+    # Taskgroup that controls the jobs running in this scope
     _tg: anyio.abc.TaskGroup = None
 
-    # This is the taskgroup which contains all linked scopes
+    # Main scope which contains all linked scopes
     _set: ScopeSet = None
+
+    # my name
     _name: str = None
     _new: bool = False
 
     # Data storage for look-up by other modules
     _data: Any = None
+
+    # Signal that the data storage is ready
     _data_lock: anyio.abc.Lock = None
 
-    _no_more: anyio.abc.Lock = None
+    # Signal for controlled shutdown via no_more_dependents
+    _no_more: anyio.abc.Event = None
+    # if None, the scope's taskgroup is cancelled instead
 
     def __init__(self, scopeset: ScopeSet, name: str, new: bool = False):
         self._next = defaultdict(lambda: 0)
@@ -73,6 +90,8 @@ class Scope:
         self._done = anyio.Event()
         self._new = new
         self._data_lock = anyio.Event()
+
+        self._logger = logging.getLogger(f"{self._set.logger.name}.{name}")
 
     async def spawn(self, proc, *args, **kwargs):
         """
@@ -86,12 +105,17 @@ class Scope:
             """
             Helper for starting a task.
 
-            This accepts a :class:`ValueEvent`, to pass the task's cancel scope
-            back to the caller.
+            The task status passes the task's cancel scope back to the caller.
             """
             with anyio.CancelScope() as _scope:
                 task_status.started(_scope)
-                await proc(*a, **kw)
+                try:
+                    self._logger.debug("Start %s %s %s", proc,a,kw)
+                    await proc(*a, **kw)
+                except BaseException as exc:
+                    self._logger.debug("Err %s %r", proc,exc)
+                else:
+                    self._logger.debug("End %s", proc)
 
         return await self._tg.start(_run, proc, args, kwargs)
 
@@ -111,16 +135,19 @@ class Scope:
         try:
             s = self._set[name]
         except KeyError:
+            self._logger.debug("requires %s", name)
             s = await self.spawn_service(proc, *args, **kwargs, _name_=name, _by_=self)
         else:
+            self._logger.debug("also requires %s", name)
             self.requires(s)
         await s._data_lock.wait()
+        self._logger.debug("%s = %r", name, s._data)
         return s
 
     async def service(self, name, proc, *args, **kwargs):
         """
-        Start this service as a dependent context if it doesn't run
-        already.
+        Start this service as a context this scope depends on
+        (if it doesn't run already).
 
         Returns: the data which the service registers / has registered.
 
@@ -145,7 +172,7 @@ class Scope:
         try:
             yield s._data
         finally:
-            await self.release(s)
+            self.release(s)
 
     def lookup(self, name):
         """
@@ -183,6 +210,7 @@ class Scope:
         """
         if self._data_lock.is_set():
             raise RuntimeError("You can't change the registration value")
+        self._logger.debug("%s: obj %r", self._name, data)
         self._data = data
         self._data_lock.set()
 
@@ -195,13 +223,13 @@ class Scope:
             raise RuntimeError("You can't enter a scope twice")
         try:
             self._set[self._name] = self
-            os = _scope.get()
+            current_scope = _scope.get()
             self._scope = _scope.set(self)
             async with anyio.create_task_group() as tg:
                 self._tg = tg
 
-                if not self._new and os is not None:
-                    os.requires(self)
+                if not self._new and current_scope is not None:
+                    current_scope.requires(self)
 
                 try:
                     yield self
@@ -213,16 +241,17 @@ class Scope:
             if self._scope is not None:  # error in setup
                 _scope.reset(self._scope)
                 self._data_lock.set()
-                with anyio.CancelScope(shield=True):
-                    self._done.set()
-                    for p in list(self._prev):
-                        await self.release(p, dead=True)
+                self._done.set()
+                for p in list(self._prev):
+                    self.release(p, dead=True)
             self._tg = None
             self._scope = None
 
     def may_not_require(self, s: Scope):
         """
-        Ensure that this scope doesn't require s to function.
+        Assert that this scope doesn't require scope @s.
+
+        Raises `RuntimeError` if it does.
         """
         seen = set()
         todo = set((self,))
@@ -249,13 +278,13 @@ class Scope:
         self._prev.add(s)
         s._next[self] += 1
 
-    async def release(self, s: Scope, dead: bool = False):
+    def release(self, s: Scope, dead: bool = False):
         """
-        This scope no longer requires another.
+        This scope no longer requires @s.
 
-        The other scope is cancelled if it no longer has any dependents.
+        @s is cancelled if it no longer has any dependents.
 
-        Set ``dead``
+        Set @dead if the service running in scope @s is no longer useable.
         """
         if self not in s._next:
             # happens when somebody called with dead=True
@@ -264,14 +293,29 @@ class Scope:
         if not dead:
             s._next[self] -= 1
             if s._next[self]:
+                self._logger.debug("release %s, in use %d", s._name, s._next[self])
                 return
-        del s._next[self]
-        self._prev.remove(s)
-        if not s._next:
-            if s._no_more is None:
-                s.cancel()
-            else:
-                s._no_more.set()
+            self._logger.debug("release %s, closing")
+        else:
+            self._logger.debug("release %s, dead, in use %d", s._name, s._next[self])
+
+        s._released(self)
+
+    def _released(self, s: Scope):
+        """
+        @s no longer requires me.
+        """
+        del self._next[s]
+        s._prev.remove(self)
+        if not self._next:
+            self.no_more()
+
+    def no_more(self):
+        self._logger.debug("No more users")
+        if self._no_more is None:
+            self.cancel()
+        else:
+            self._no_more.set()
 
     @property
     def dependents(self):
@@ -306,7 +350,12 @@ class Scope:
             return
         try:
             self._no_more = anyio.Event()
+            self._logger.debug("Wait No more users")
             await self._no_more.wait()
+        except BaseException as exc:
+            self._logger.debug("Wait No more users: %r", exc)
+        else:
+            self._logger.debug("Wait No more users: OK")
         finally:
             self._no_more = None
 
@@ -317,12 +366,11 @@ class Scope:
         XXX cancellation is strictly sequential. Some parallelization might
         be a good idea.
         """
+        self._logger.debug("Cancel dependents")
         for s in self.dependents:
-            if s._no_more is None:
-                s.cancel()
-            else:
-                s._no_more.set()
+            s.no_more()
             await s.wait()
+        self._logger.debug("Cancel dependents done")
 
     async def cancel_immediate(self):
         """
@@ -331,6 +379,7 @@ class Scope:
         This will cancel all scopes that depend on this one without waiting
         for them to terminate.
         """
+        self._logger.debug("Cancel Immediate")
         for s in self.dependents:
             s.cancel()
         self.cancel()
@@ -342,13 +391,16 @@ class Scope:
         Do not call directly!
         """
         if self._tg:
+            self._logger.debug("Cancelled")
             self._tg.cancel_scope.cancel()
 
     async def wait(self):
         """
         Wait until this scope has terminated.
         """
+        self._logger.debug("Wait for end")
         await self._done.wait()
+        self._logger.debug("End")
 
     def __hash__(self):
         return id(self)
@@ -361,12 +413,16 @@ class Scope:
 
 
 class ScopeSet:
+    """
+    This class is the container for the `main_scope` context manager.
+    """
     _tg = None
     _ctx_ = None
     _main_name: str = None
     _seq = 0
 
     def __init__(self, name: str = None):
+        self.logger = logging.getLogger(f"scope.{name}")
         self._scopes: Dict[str, Scope] = dict()
         if name is None:
             type(self)._seq += 1
@@ -389,13 +445,14 @@ class ScopeSet:
 
         async def _service(s, proc, args, kwargs, *, task_status=None):
             with anyio.CancelScope(shield=True):
+                # Shielded because cancellation is managed by the scope
                 async with s._ctx():
                     task_status.started()
                     await proc(*args, **kwargs)
 
         s = Scope(self, _name_)
         self._scopes[_name_] = s
-        if _by_:
+        if _by_ is not None:
             _by_.requires(s)
         await self._tg.start(_service, s, proc, args, kwargs)
         return s
@@ -428,7 +485,7 @@ class ScopeSet:
         """
         Context manager for a new scope set
         """
-        s = Scope(self, self._main_name, new=True)
+        s = Scope(self, "_main", new=True)
         async with anyio.create_task_group() as tg:
             self._tg = tg
             async with s._ctx():
@@ -441,6 +498,8 @@ class ScopeSet:
         pass  # end taskgroup
 
         # At this point `self._scopes` shall be empty
+        if self._scopes:
+            raise RuntimeError("Scope st ended but not empty")
 
     async def __aenter__(self):
         if self._ctx_ is not None:
@@ -466,6 +525,6 @@ async def main_scope(name="_main"):
         try:
             yield s
         finally:
-            await s.cancel_dependents()  # should not be any but …
+            await s.cancel_dependents()  # there should not be any, but …
             s.cancel()
     pass  # end main scope
