@@ -1,3 +1,9 @@
+asyncscope (0.6.0-1) unstable; urgency=medium
+
+  * Merge
+
+ -- Matthias Urlichs <matthias@urlichs.de>  Sat, 01 Oct 2022 12:51:53 +0200
+
 asyncscope (0.5.6-1) unstable; urgency=medium
 
   * Merge

@@ -30,6 +30,7 @@ import anyio.abc
 from contextvars import ContextVar
 from contextlib import asynccontextmanager
 from collections import defaultdict
+from functools import partial
 from typing import Any, Set, Dict
 
 import logging
@@ -118,6 +119,16 @@ class Scope:
                     self._logger.debug("End %s", proc)
 
         return await self._tg.start(_run, proc, args, kwargs)
+
+    def start_soon(self, proc, *args, **kwargs):
+        self._tg.start_soon(partial(proc, *args, **kwargs))
+
+    async def start(self, proc, *args, **kwargs):
+        return await self._tg.start(partial(proc, *args, **kwargs))
+
+    @property
+    def cancel_scope(self):
+        return self
 
     async def spawn_service(self, proc, *args, **kwargs):
         """
@@ -313,7 +324,7 @@ class Scope:
     def no_more(self):
         self._logger.debug("No more users")
         if self._no_more is None:
-            self._cancel()
+            self.cancel()
         else:
             self._no_more.set()
 
@@ -381,10 +392,10 @@ class Scope:
         """
         self._logger.debug("Cancel Immediate")
         for s in self.dependents:
-            s._cancel()
-        self._cancel()
+            s.cancel()
+        self.cancel()
 
-    def _cancel(self):
+    def cancel(self):
         """
         Cancel this scope.
         """
@@ -408,6 +419,11 @@ class Scope:
 
     def __repr__(self):
         return "<%s %s>" % (self.__class__.__name__, self._name)
+
+    def subscope(self):
+        sid = self._set._seq
+        self._set._seq += 1
+        return Scope(self, f"_sub_{sid}")
 
 
 class ScopeSet:
@@ -524,5 +540,6 @@ async def main_scope(name="_main"):
             yield s
         finally:
             await s.cancel_dependents()  # there should not be any, but …
-            s._cancel()
+            s.cancel()
     pass  # end main scope
+
