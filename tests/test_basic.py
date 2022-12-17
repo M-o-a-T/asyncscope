@@ -1,8 +1,16 @@
-import anyio
-from asyncscope import scope, ScopeSet
-from . import Stepper
-import pytest
+import logging
 from random import random
+
+import anyio
+import pytest
+
+from asyncscope import ScopeSet, scope
+
+from . import Stepper
+
+logger = logging.getLogger(__name__)
+logger.root.level = logging.DEBUG
+logger.level = logging.DEBUG
 
 _done = None
 
@@ -55,7 +63,7 @@ async def test_main_error_a():
         try:
             await anyio.sleep(0.1)
             _done.set()
-            await anyio.sleep(99)
+            await anyio.sleep(9999)
         finally:
             await dly()
             stp(3)
@@ -63,7 +71,7 @@ async def test_main_error_a():
     async def serv_b(stp):
         try:
             await scope.spawn_service(serv_c, stp)
-            await anyio.sleep(99)
+            await anyio.sleep(9999)
         finally:
             await dly()
             stp(2)
@@ -85,7 +93,7 @@ async def test_main_error_a():
             stp = Stepper()
             await scope.spawn(main_a, stp)
             await _done.wait()
-            await anyio.sleep(99)
+            await anyio.sleep(9999)
     assert e.value.args == ("Bye",)
 
 
@@ -100,8 +108,8 @@ async def test_diamond():
     async def serv_d():
         try:
             steps(1)
-            await anyio.sleep(0.1)
-            await scope.register("D")
+            await anyio.sleep(0.3)
+            scope.register("D")
             _done.set()
             await anyio.sleep(999)
         finally:
@@ -111,8 +119,8 @@ async def test_diamond():
     async def serv_c():
         try:
             steps(100)
+            scope.register("C")
             await scope.service("D", serv_d)
-            await scope.register("C")
             await anyio.sleep(999)
         finally:
             await dly()
@@ -123,7 +131,7 @@ async def test_diamond():
             steps(10000)
             c1 = await scope.service("C2", serv_c)
             c2 = await scope.service("C1", serv_c)
-            await scope.register("B")
+            scope.register("B")
             assert c1 == "C"
             assert c2 == "C"
             with anyio.fail_after(9):

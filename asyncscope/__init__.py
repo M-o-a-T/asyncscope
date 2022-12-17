@@ -25,15 +25,16 @@ create one.
 """
 from __future__ import annotations
 
+import logging
+from collections import defaultdict
+from concurrent.futures import CancelledError
+from contextlib import asynccontextmanager
+from contextvars import ContextVar
+from functools import partial
+from typing import Any, Dict, Set
+
 import anyio
 import anyio.abc
-from contextvars import ContextVar
-from contextlib import asynccontextmanager
-from collections import defaultdict
-from functools import partial
-from typing import Any, Set, Dict
-
-import logging
 
 _scope = ContextVar("scope", default=None)
 
@@ -50,6 +51,9 @@ scope = _ScopeProxy()
 
 
 class Scope:
+    # unnamed scopes. Classvar.
+    _id = 0
+
     # key: the scopes I depend on
     # val: how often I do – might have been added more than once
     _next: Dict[Scope, int] = None
@@ -76,6 +80,9 @@ class Scope:
     # Data storage for look-up by other modules
     _data: Any = None
 
+    # Service startup caused an exception? owch.
+    _error: Exception = None
+
     # Signal that the data storage is ready
     _data_lock: anyio.abc.Lock = None
 
@@ -91,6 +98,7 @@ class Scope:
         self._done = anyio.Event()
         self._new = new
         self._data_lock = anyio.Event()
+        self._set[self._name] = self
 
         self._logger = logging.getLogger(f"{self._set.logger.name}.{name}")
 
@@ -111,10 +119,11 @@ class Scope:
             with anyio.CancelScope() as _scope:
                 task_status.started(_scope)
                 try:
-                    self._logger.debug("Start %s %s %s", proc,a,kw)
+                    self._logger.debug("Start %s %s %s", proc, a, kw)
                     await proc(*a, **kw)
                 except BaseException as exc:
-                    self._logger.debug("Err %s %r", proc,exc)
+                    self._logger.debug("Err %s %r", proc, exc)
+                    raise
                 else:
                     self._logger.debug("End %s", proc)
 
@@ -132,27 +141,39 @@ class Scope:
 
     async def spawn_service(self, proc, *args, **kwargs):
         """
-        Run 'proc' in a new service scope, i.e. one that should end *after* the
-        current scope terminates.
-
-        Special arguments:
-            _name_: Name for the new scope
+        Run 'proc' in a new service scope, i.e. one that should auto-end
+        *after* the current scope terminates.
 
         Returns: the new scope.
         """
-        return await self._set.spawn(proc, *args, **kwargs)
+        Scope._id += 1
+        sc_id = Scope._id
+
+        s = Scope(self._set, f"{sc_id}")
+        await self._set.spawn(s, proc, *args, **kwargs)
+        return s
 
     async def _service(self, name, proc, args, kwargs):
+        """
+        Start a service in a new scope, return the scope.
+        """
         try:
             s = self._set[name]
         except KeyError:
             self._logger.debug("requires %s", name)
-            s = await self.spawn_service(proc, *args, **kwargs, _name_=name, _by_=self)
+            s = Scope(self._set, name)
+            await self._set.spawn(s, proc, *args, **kwargs)
         else:
             self._logger.debug("also requires %s", name)
-            self.requires(s)
+        self.requires(s)
+
         await s._data_lock.wait()
-        self._logger.debug("%s = %r", name, s._data)
+        if s._error is None:
+            self._logger.debug("%s = %r", name, s._data)
+        else:
+            self._logger.error("%s = %r", name, s._error)
+            self.release(s, dead=True)
+            raise s._error
         return s
 
     async def service(self, name, proc, *args, **kwargs):
@@ -200,6 +221,7 @@ class Scope:
         s = self.lookup_scope(name)
         if not s._data_lock.is_set():
             raise KeyError(name)
+        scope.requires(s)
         return s._data
 
     def lookup_scope(self, name):
@@ -213,7 +235,7 @@ class Scope:
         s = self._set[name]
         return s
 
-    async def register(self, data: Any):
+    def register(self, data: Any):
         """
         Register some data with this scope.
 
@@ -232,10 +254,12 @@ class Scope:
         """
         if self._scope is not None:
             raise RuntimeError("You can't enter a scope twice")
+        if self._set[self._name] is not self:
+            raise RuntimeError(f"Lookup of {self._name} does not match scope")
+
+        current_scope = _scope.get()
+        self._scope = _scope.set(self)
         try:
-            self._set[self._name] = self
-            current_scope = _scope.get()
-            self._scope = _scope.set(self)
             async with anyio.create_task_group() as tg:
                 self._tg = tg
 
@@ -248,15 +272,34 @@ class Scope:
                     del self._set[self._name]
                     with anyio.CancelScope(shield=True):
                         await self.cancel_immediate()
-        finally:
-            if self._scope is not None:  # error in setup
-                _scope.reset(self._scope)
+
+        except Exception as exc:
+            self._logger.exception("Ugh %r", exc)
+            if self._data_lock.is_set():
+                raise
+            self._error = exc
+            self._data_lock.set()
+
+        except BaseException as exc:
+            self._logger.exception("Ugh %r", exc)
+            if not self._data_lock.is_set():
+                self._error = CancelledError()
                 self._data_lock.set()
-                self._done.set()
-                for p in list(self._prev):
-                    self.release(p, dead=True)
-            self._tg = None
+            raise
+
+        finally:
+            _scope.reset(self._scope)
             self._scope = None
+
+            if not self._data_lock.is_set():
+                self._error = RuntimeError(
+                    f"{self._name} didn't call `scope.register`!"
+                )
+                self._data_lock.set()
+            self._done.set()
+            for p in list(self._prev):
+                self.release(p, dead=True)
+            self._tg = None
 
     def may_not_require(self, s: Scope):
         """
@@ -420,6 +463,10 @@ class Scope:
     def __repr__(self):
         return "<%s %s>" % (self.__class__.__name__, self._name)
 
+    @property
+    def name(self):
+        return self._name
+
     def subscope(self):
         sid = self._set._seq
         self._set._seq += 1
@@ -430,46 +477,37 @@ class ScopeSet:
     """
     This class is the container for the `main_scope` context manager.
     """
+
     _tg = None
     _ctx_ = None
     _main_name: str = None
     _seq = 0
 
     def __init__(self, name: str = None):
-        self.logger = logging.getLogger(f"scope.{name}")
+        self.logger = logging.getLogger(
+            f"scope.{name}" if name is not None else "scope"
+        )
         self._scopes: Dict[str, Scope] = dict()
         if name is None:
             type(self)._seq += 1
             name = "_main_%d" % (type(self)._seq)
         self._main_name = name
 
-    async def spawn(self, proc, *args, _name_: str = None, _by_: Scope = None, **kwargs):
+    async def spawn(self, s: Scope, proc, *args, **kwargs):
         """
-        Run 'proc' in a new scope which the current scope depends on.
-
-        Special arguments:
-            _name_: Name for the new scope
-            _by_: the scope that should depend on this one
-
-        Returns: the new scope.
+        Run 'proc' in the given scope.
+        The scope must be new and the current scope must already depend on it.
         """
-        s = None
-        if _name_ is None:
-            _name_ = proc.__name__
+        self.logger.debug("Spawn %r: %r %r %r", s, proc, args, kwargs)
 
-        async def _service(s, proc, args, kwargs, *, task_status=None):
+        async def _service(s, proc, args, kwargs, *, task_status):
             with anyio.CancelScope(shield=True):
                 # Shielded because cancellation is managed by the scope
                 async with s._ctx():
                     task_status.started()
                     await proc(*args, **kwargs)
 
-        s = Scope(self, _name_)
-        self._scopes[_name_] = s
-        if _by_ is not None:
-            _by_.requires(s)
         await self._tg.start(_service, s, proc, args, kwargs)
-        return s
 
     def __getitem__(self, key):
         if isinstance(key, Scope):
@@ -500,10 +538,11 @@ class ScopeSet:
         Context manager for a new scope set
         """
         s = Scope(self, "_main", new=True)
+        s.register(None)
         async with anyio.create_task_group() as tg:
             self._tg = tg
+            self._scopes[s._name] = s
             async with s._ctx():
-                self._scopes[s._name] = s
                 try:
                     yield s
                 finally:
@@ -513,13 +552,16 @@ class ScopeSet:
 
         # At this point `self._scopes` shall be empty
         if self._scopes:
-            raise RuntimeError("Scope st ended but not empty")
+            raise RuntimeError(
+                f"ScopeSet {self._main_name !r} ended but not empty: "
+                + " ".join(tuple(repr(x) for x in self._scopes.keys()))
+            )
 
     async def __aenter__(self):
         if self._ctx_ is not None:
             raise RuntimeError("A ScopeSet can only be used once")
         self._ctx_ = self._ctx()
-        return await self._ctx_.__aenter__()
+        return await self._ctx_.__aenter__()  # pylint:disable=no-member  # YES IT HAS
 
     async def __aexit__(self, *tb):
         return await self._ctx_.__aexit__(*tb)  # pylint:disable=no-member  # YES IT HAS
@@ -542,4 +584,3 @@ async def main_scope(name="_main"):
             await s.cancel_dependents()  # there should not be any, but …
             s.cancel()
     pass  # end main scope
-
