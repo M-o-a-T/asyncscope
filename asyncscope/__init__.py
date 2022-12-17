@@ -98,7 +98,7 @@ class Scope:
         self._done = anyio.Event()
         self._new = new
         self._data_lock = anyio.Event()
-        self._set.add(self)
+        self._set[self._name] = self
 
         self._logger = logging.getLogger(f"{self._set.logger.name}.{name}")
 
@@ -487,11 +487,6 @@ class ScopeSet:
             type(self)._seq += 1
             name = "_main_%d" % (type(self)._seq)
         self._main_name = name
-
-    def add(self, s:Scope):
-        if s.name in self._scopes:
-            raise RuntimeError(f"Scope {s.name !r} already exists")
-        self._scopes[s.name] = s
 
     async def spawn(self, s: Scope, proc, *args, **kwargs):
         """
