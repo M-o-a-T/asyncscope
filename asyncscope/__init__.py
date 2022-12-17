@@ -25,16 +25,16 @@ create one.
 """
 from __future__ import annotations
 
+import logging
+from collections import defaultdict
+from concurrent.futures import CancelledError
+from contextlib import asynccontextmanager
+from contextvars import ContextVar
+from functools import partial
+from typing import Any, Dict, Set
+
 import anyio
 import anyio.abc
-from contextvars import ContextVar
-from contextlib import asynccontextmanager
-from collections import defaultdict
-from functools import partial
-from typing import Any, Set, Dict
-from concurrent.futures import CancelledError
-
-import logging
 
 _scope = ContextVar("scope", default=None)
 
@@ -119,10 +119,10 @@ class Scope:
             with anyio.CancelScope() as _scope:
                 task_status.started(_scope)
                 try:
-                    self._logger.debug("Start %s %s %s", proc,a,kw)
+                    self._logger.debug("Start %s %s %s", proc, a, kw)
                     await proc(*a, **kw)
                 except BaseException as exc:
-                    self._logger.debug("Err %s %r", proc,exc)
+                    self._logger.debug("Err %s %r", proc, exc)
                     raise
                 else:
                     self._logger.debug("End %s", proc)
@@ -280,7 +280,7 @@ class Scope:
             self._error = exc
             self._data_lock.set()
 
-        except BaseException:
+        except BaseException as exc:
             self._logger.exception("Ugh %r", exc)
             if not self._data_lock.is_set():
                 self._error = CancelledError()
@@ -292,7 +292,9 @@ class Scope:
             self._scope = None
 
             if not self._data_lock.is_set():
-                self._error = RuntimeError(f"{self._name} didn't call `scope.register`!")
+                self._error = RuntimeError(
+                    f"{self._name} didn't call `scope.register`!"
+                )
                 self._data_lock.set()
             self._done.set()
             for p in list(self._prev):
@@ -475,13 +477,16 @@ class ScopeSet:
     """
     This class is the container for the `main_scope` context manager.
     """
+
     _tg = None
     _ctx_ = None
     _main_name: str = None
     _seq = 0
 
     def __init__(self, name: str = None):
-        self.logger = logging.getLogger(f"scope.{name}" if name is not None else "scope")
+        self.logger = logging.getLogger(
+            f"scope.{name}" if name is not None else "scope"
+        )
         self._scopes: Dict[str, Scope] = dict()
         if name is None:
             type(self)._seq += 1
@@ -493,9 +498,7 @@ class ScopeSet:
         Run 'proc' in the given scope.
         The scope must be new and the current scope must already depend on it.
         """
-        if isinstance(proc,Scope):
-            breakpoint()
-        self.logger.debug("Spawn %r: %r %r %r", s,proc,args,kwargs)
+        self.logger.debug("Spawn %r: %r %r %r", s, proc, args, kwargs)
 
         async def _service(s, proc, args, kwargs, *, task_status):
             with anyio.CancelScope(shield=True):
@@ -549,13 +552,16 @@ class ScopeSet:
 
         # At this point `self._scopes` shall be empty
         if self._scopes:
-            raise RuntimeError(f"ScopeSet {self._main_name !r} ended but not empty: {' '.join(tuple(repr(x) for x in self._scopes.keys()))}")
+            raise RuntimeError(
+                f"ScopeSet {self._main_name !r} ended but not empty: "
+                + " ".join(tuple(repr(x) for x in self._scopes.keys()))
+            )
 
     async def __aenter__(self):
         if self._ctx_ is not None:
             raise RuntimeError("A ScopeSet can only be used once")
         self._ctx_ = self._ctx()
-        return await self._ctx_.__aenter__()
+        return await self._ctx_.__aenter__()  # pylint:disable=no-member  # YES IT HAS
 
     async def __aexit__(self, *tb):
         return await self._ctx_.__aexit__(*tb)  # pylint:disable=no-member  # YES IT HAS
@@ -578,4 +584,3 @@ async def main_scope(name="_main"):
             await s.cancel_dependents()  # there should not be any, but …
             s.cancel()
     pass  # end main scope
-

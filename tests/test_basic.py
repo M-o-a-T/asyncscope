@@ -1,12 +1,16 @@
-import anyio
-from asyncscope import scope, ScopeSet
-from . import Stepper
-import pytest
-from random import random
 import logging
-logger=logging.getLogger(__name__)
-logger.root.level=logging.DEBUG
-logger.level=logging.DEBUG
+from random import random
+
+import anyio
+import pytest
+
+from asyncscope import ScopeSet, scope
+
+from . import Stepper
+
+logger = logging.getLogger(__name__)
+logger.root.level = logging.DEBUG
+logger.level = logging.DEBUG
 
 _done = None
 
@@ -45,7 +49,7 @@ async def test_main():
 
     global _done
     _done = anyio.Event()
-    async with ScopeSet() as scs:
+    async with ScopeSet():
         stp = Stepper()
         await scope.spawn(main_a, stp)
         await _done.wait()

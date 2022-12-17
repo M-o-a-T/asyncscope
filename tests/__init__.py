@@ -1,5 +1,4 @@
-import logging
-_cfg={  # a magic incantation
+_cfg = {  # a magic incantation
     "version": 1,
     # "loggers": {"asyncserf": {"level": "INFO"}, "xknx.raw_socket": {"level": "INFO"}},
     "root": {"handlers": ["stderr"], "level": "INFO"},
@@ -26,6 +25,7 @@ _cfg={  # a magic incantation
     "disable_existing_loggers": False,
 }
 from logging.config import dictConfig as _config
+
 _config(_cfg)
 
 
