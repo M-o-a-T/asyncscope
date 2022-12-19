@@ -274,14 +274,13 @@ class Scope:
                         await self.cancel_immediate()
 
         except Exception as exc:
-            self._logger.exception("Ugh %r", exc)
             if self._data_lock.is_set():
                 raise
+            self._logger.exception("Ugh %r", exc)
             self._error = exc
             self._data_lock.set()
 
         except BaseException as exc:
-            self._logger.exception("Ugh %r", exc)
             if not self._data_lock.is_set():
                 self._error = CancelledError()
                 self._data_lock.set()
