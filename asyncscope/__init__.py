@@ -139,7 +139,7 @@ class Scope:
     def cancel_scope(self):
         return self
 
-    async def spawn_service(self, proc, *args, **kwargs):
+    async def spawn_service(self, proc, *args, _as_scope=False, **kwargs):
         """
         Run 'proc' in a new service scope, i.e. one that should auto-end
         *after* the current scope terminates.
@@ -151,7 +151,7 @@ class Scope:
 
         s = Scope(self._set, f"{sc_id}")
         await self._set.spawn(s, proc, *args, **kwargs)
-        return s
+        return s if _as_scope else s._data
 
     async def _service(self, name, proc, args, kwargs):
         """
@@ -176,7 +176,7 @@ class Scope:
             raise s._error
         return s
 
-    async def service(self, name, proc, *args, **kwargs):
+    async def service(self, name, proc, *args, _as_scope=False, **kwargs):
         """
         Start this service as a context this scope depends on
         (if it doesn't run already).
@@ -187,7 +187,7 @@ class Scope:
         (This will happen automatically when your scope ends.)
         """
         s = await self._service(name, proc, args, kwargs)
-        return s._data
+        return s if _as_scope else s._data
 
     @asynccontextmanager
     async def using_service(self, name, proc, *args, **kwargs):
