@@ -240,11 +240,14 @@ class Scope:
         Register some data with this scope.
 
         The data is returned by calls to `service` from other scopes.
+
+        The returned data will have an _asyncscope element.
         """
         if self._data_lock.is_set():
             raise RuntimeError("You can't change the registration value")
         self._logger.debug("%s: obj %r", self._name, data)
         self._data = data
+        data._asyncscope = scope
         self._data_lock.set()
 
     @asynccontextmanager
@@ -411,6 +414,8 @@ class Scope:
             self._logger.debug("Wait No more users: OK")
         finally:
             self._no_more = None
+            del self._data._asyncscope
+            del self._data
 
     async def cancel_dependents(self):
         """
@@ -567,6 +572,13 @@ class ScopeSet:
 
     def __repr__(self):
         return "<%s %s>" % (self.__class__.__name__, self._main_name)
+
+
+def get_scope(data: Any) -> Scope:
+    """
+    Retrieve the scope a data element was created in.
+    """
+    return data._asyncscope
 
 
 @asynccontextmanager
