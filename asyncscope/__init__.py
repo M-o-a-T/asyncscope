@@ -102,6 +102,11 @@ class Scope:
 
         self._logger = logging.getLogger(f"{self._set.logger.name}.{name}")
 
+    @property
+    def data(self):
+        "retrieve the scope's data object"
+        return self._data
+
     async def spawn(self, proc, *args, **kwargs):
         """
         Run a task within this scope.
@@ -139,7 +144,7 @@ class Scope:
     def cancel_scope(self):
         return self
 
-    async def spawn_service(self, proc, *args, **kwargs):
+    async def spawn_service(self, proc, *args, _as_scope=False, **kwargs):
         """
         Run 'proc' in a new service scope, i.e. one that should auto-end
         *after* the current scope terminates.
@@ -151,7 +156,7 @@ class Scope:
 
         s = Scope(self._set, f"{sc_id}")
         await self._set.spawn(s, proc, *args, **kwargs)
-        return s
+        return s if _as_scope else s._data
 
     async def _service(self, name, proc, args, kwargs):
         """
@@ -176,7 +181,7 @@ class Scope:
             raise s._error
         return s
 
-    async def service(self, name, proc, *args, **kwargs):
+    async def service(self, name, proc, *args, _as_scope=False, **kwargs):
         """
         Start this service as a context this scope depends on
         (if it doesn't run already).
@@ -187,7 +192,7 @@ class Scope:
         (This will happen automatically when your scope ends.)
         """
         s = await self._service(name, proc, args, kwargs)
-        return s._data
+        return s if _as_scope else s._data
 
     @asynccontextmanager
     async def using_service(self, name, proc, *args, **kwargs):
@@ -283,7 +288,7 @@ class Scope:
             self._error = exc
             self._data_lock.set()
 
-        except BaseException as exc:
+        except BaseException:
             if not self._data_lock.is_set():
                 self._error = CancelledError()
                 self._data_lock.set()
@@ -542,7 +547,7 @@ class ScopeSet:
         Context manager for a new scope set
         """
         s = Scope(self, "_main", new=True)
-        s.register(None)
+        s.register(self)
         async with anyio.create_task_group() as tg:
             self._tg = tg
             self._scopes[s._name] = s
