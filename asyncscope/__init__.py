@@ -283,7 +283,7 @@ class Scope:
             self._error = exc
             self._data_lock.set()
 
-        except BaseException as exc:
+        except BaseException:
             if not self._data_lock.is_set():
                 self._error = CancelledError()
                 self._data_lock.set()
