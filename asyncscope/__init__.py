@@ -153,10 +153,7 @@ class Scope:
         """
         Scope._id += 1
         sc_id = Scope._id
-
-        s = Scope(self._set, f"{sc_id}")
-        await self._set.spawn(s, proc, *args, **kwargs)
-        return s if _as_scope else s._data
+        return await self.service(f"{sc_id}", *args, _as_scope=_as_scope, **kwargs)
 
     async def _service(self, name, proc, args, kwargs):
         """
