@@ -102,6 +102,11 @@ class Scope:
 
         self._logger = logging.getLogger(f"{self._set.logger.name}.{name}")
 
+    @property
+    def data(self):
+        "retrieve the scope's data object"
+        return self._data
+
     async def spawn(self, proc, *args, **kwargs):
         """
         Run a task within this scope.
