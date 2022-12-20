@@ -97,6 +97,11 @@ async def test_main_error_a():
     assert e.value.args == ("Bye",)
 
 
+class S(str):
+    "A string we can set attributes on"
+    pass
+
+
 @pytest.mark.anyio
 async def test_diamond():
     _steps = 0
@@ -109,7 +114,7 @@ async def test_diamond():
         try:
             steps(1)
             await anyio.sleep(0.3)
-            scope.register("D")
+            scope.register(S("D"))
             _done.set()
             await anyio.sleep(999)
         finally:
@@ -119,7 +124,7 @@ async def test_diamond():
     async def serv_c():
         try:
             steps(100)
-            scope.register("C")
+            scope.register(S("C"))
             await scope.service("D", serv_d)
             await anyio.sleep(999)
         finally:
@@ -131,7 +136,7 @@ async def test_diamond():
             steps(10000)
             c1 = await scope.service("C2", serv_c)
             c2 = await scope.service("C1", serv_c)
-            scope.register("B")
+            scope.register(S("B"))
             assert c1 == "C"
             assert c2 == "C"
             with anyio.fail_after(9):
