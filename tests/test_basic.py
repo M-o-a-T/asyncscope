@@ -61,6 +61,7 @@ async def test_main():
 async def test_main_error_a():
     async def serv_c(stp):
         try:
+            scope.register(S("C"))
             await anyio.sleep(0.1)
             _done.set()
             await anyio.sleep(9999)
@@ -71,6 +72,7 @@ async def test_main_error_a():
     async def serv_b(stp):
         try:
             await scope.spawn_service(serv_c, stp)
+            scope.register(S("B"))
             await anyio.sleep(9999)
         finally:
             await dly()

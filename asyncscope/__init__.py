@@ -165,8 +165,7 @@ class Scope:
         Scope._id += 1
         sc_id = Scope._id
 
-        s = Scope(self._set, f"_dyn_{sc_id}")
-        await self._set.spawn(s, proc, *args, **kwargs)
+        s = await self._service(f"_dyn_{sc_id}", proc, args, kwargs)
         return s if _as_scope else s._data
 
     async def _service(self, name, proc, args, kwargs):
@@ -260,7 +259,7 @@ class Scope:
         The returned data will have an _asyncscope element.
         """
         if self._data_lock.is_set():
-            raise RuntimeError("You can't change the registration value")
+            raise RuntimeError(f"{self !r} can't change the registration value")
         self.logger.debug("%s: obj %r", self._name, data)
         self._data = data
         data._asyncscope = scope
