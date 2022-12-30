@@ -107,7 +107,7 @@ class Scope:
         self._data_lock = anyio.Event()
         self._set[self._name] = self
 
-        self._logger = logging.getLogger(f"{self._set.logger.name}.{name}")
+        self.logger = logging.getLogger(f"scope.{name}")
 
     @property
     def data(self):
@@ -131,13 +131,13 @@ class Scope:
             with anyio.CancelScope() as _scope:
                 task_status.started(_scope)
                 try:
-                    self._logger.debug("Start %s %s %s", proc, a, kw)
+                    self.logger.debug("Start %s %s %s", proc, a, kw)
                     await proc(*a, **kw)
                 except BaseException as exc:
-                    self._logger.debug("Err %s %r", proc, exc)
+                    self.logger.debug("Err %s %r", proc, exc)
                     raise
                 else:
-                    self._logger.debug("End %s", proc)
+                    self.logger.debug("End %s", proc)
 
         return await self._tg.start(_run, proc, args, kwargs)
 
@@ -172,18 +172,18 @@ class Scope:
         try:
             s = self._set[name]
         except KeyError:
-            self._logger.debug("requires %s", name)
+            self.logger.debug("requires %s", name)
             s = Scope(self._set, name)
             await self._set.spawn(s, proc, *args, **kwargs)
         else:
-            self._logger.debug("also requires %s", name)
+            self.logger.debug("also requires %s", name)
         self.requires(s)
 
         await s._data_lock.wait()
         if s._error is None:
-            self._logger.debug("%s = %r", name, s._data)
+            self.logger.debug("%s = %r", name, s._data)
         else:
-            self._logger.error("%s = %r", name, s._error)
+            self.logger.error("%s = %r", name, s._error)
             self.release(s, dead=True)
             raise s._error
         return s
@@ -257,7 +257,7 @@ class Scope:
         """
         if self._data_lock.is_set():
             raise RuntimeError("You can't change the registration value")
-        self._logger.debug("%s: obj %r", self._name, data)
+        self.logger.debug("%s: obj %r", self._name, data)
         self._data = data
         data._asyncscope = scope
         self._data_lock.set()
@@ -291,7 +291,7 @@ class Scope:
         except Exception as exc:
             if self._data_lock.is_set():
                 raise
-            self._logger.exception("Ugh %r", exc)
+            self.logger.exception("Ugh %r", exc)
             self._error = exc
             self._data_lock.set()
 
@@ -370,11 +370,11 @@ class Scope:
         if not dead:
             s._next[self] -= 1
             if s._next[self]:
-                self._logger.debug("release %s, in use %d", s._name, s._next[self])
+                self.logger.debug("release %s, in use %d", s._name, s._next[self])
                 return
-            self._logger.debug("release %s, closing")
+            self.logger.debug("release %s, closing")
         else:
-            self._logger.debug("release %s, dead, in use %d", s._name, s._next[self])
+            self.logger.debug("release %s, dead, in use %d", s._name, s._next[self])
 
         s._released(self)
 
@@ -388,7 +388,7 @@ class Scope:
             self.no_more()
 
     def no_more(self):
-        self._logger.debug("No more users")
+        self.logger.debug("No more users")
         if self._no_more is None:
             self.cancel()
         else:
@@ -427,12 +427,12 @@ class Scope:
             return
         try:
             self._no_more = anyio.Event()
-            self._logger.debug("Wait No more users")
+            self.logger.debug("Wait No more users")
             await self._no_more.wait()
         except BaseException as exc:
-            self._logger.debug("Wait No more users: %r", exc)
+            self.logger.debug("Wait No more users: %r", exc)
         else:
-            self._logger.debug("Wait No more users: OK")
+            self.logger.debug("Wait No more users: OK")
         finally:
             self._no_more = None
             del self._data._asyncscope
@@ -445,11 +445,11 @@ class Scope:
         XXX cancellation is strictly sequential. Some parallelization might
         be a good idea.
         """
-        self._logger.debug("Cancel dependents")
+        self.logger.debug("Cancel dependents")
         for s in self.dependents:
             s.no_more()
             await s.wait()
-        self._logger.debug("Cancel dependents done")
+        self.logger.debug("Cancel dependents done")
 
     async def cancel_immediate(self):
         """
@@ -458,7 +458,7 @@ class Scope:
         This will cancel all scopes that depend on this one without waiting
         for them to terminate.
         """
-        self._logger.debug("Cancel Immediate")
+        self.logger.debug("Cancel Immediate")
         for s in self.dependents:
             s.cancel()
         self.cancel()
@@ -468,16 +468,16 @@ class Scope:
         Cancel this scope.
         """
         if self._tg:
-            self._logger.debug("Cancelled")
+            self.logger.debug("Cancelled")
             self._tg.cancel_scope.cancel()
 
     async def wait(self):
         """
         Wait until this scope has terminated.
         """
-        self._logger.debug("Wait for end")
+        self.logger.debug("Wait for end")
         await self._done.wait()
-        self._logger.debug("End")
+        self.logger.debug("End")
 
     def __hash__(self):
         return id(self)

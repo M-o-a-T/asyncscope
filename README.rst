@@ -237,6 +237,11 @@ The current scope is available as the ``scope`` context variable.
 The ``examples`` directory contains some sample code.
 
 
+Loggging
+++++++++
+
+``scope.logger`` is a standard `logging.Logger` object, named ``scope.NAME``.
+
 Exception handling
 ==================
 
