@@ -74,7 +74,8 @@ Usage
 Main code
 +++++++++
 
-Wrap your main code in an ``async with asyncscope.main_scope(): ...`` block.
+Wrap your main code in an ``async with asyncscope.main_scope('NAME'): ...``
+block. (The name defaults to ``_main`` if omitted.)
 
 This call initializes the global `AsyncScope.scope` object. It always
 refers to the current service (i.e. initially, your main code).
@@ -241,6 +242,22 @@ Loggging
 ++++++++
 
 ``scope.logger`` is a standard `logging.Logger` object, named ``scope.NAME``.
+
+
+Multithreading
+++++++++++++++
+
+`AsyncScope` is **not** compatible with multithreading. Using a single main
+scope from multiple threads *will* cause inconsistent data, deadlocks,
+and/or other hard-to-find bugs.
+
+If you start a separate async mainloop in a new thread, you must call
+``scope.thread_reset()`` before entering the thread's main scope. You also
+should pass a thread-specific name to `main_scope`.
+
+Do not share services between threads. They are typically not
+multithreading-aware and `AsyncScope` might terminate them at any time.
+
 
 Exception handling
 ==================

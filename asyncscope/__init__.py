@@ -47,6 +47,9 @@ class _ScopeProxy:
     def __getattr__(self, k):
         return getattr(_scope.get(), k)
 
+    def thread_reset(self):
+        "clear scope var for use w/ multithreading"
+        _scope.set(None)
 
 scope = _ScopeProxy()
 
