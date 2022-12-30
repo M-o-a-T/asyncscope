@@ -41,6 +41,7 @@ _scope = ContextVar("scope", default=None)
 
 class _ScopeProxy:
     def get(self):
+        "return the actual scope contextvar"
         return _scope.get()
 
     def __getattr__(self, k):
