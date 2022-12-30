@@ -165,9 +165,7 @@ class Scope:
         Scope._id += 1
         sc_id = Scope._id
 
-        s = Scope(self._set, f"_dyn_{sc_id}")
-        await self._set.spawn(s, proc, *args, **kwargs)
-        await s._data_lock.wait()
+        s = await self._service(f"_dyn_{sc_id}", proc, args, kwargs)
         return s if _as_scope else s._data
 
     async def _service(self, name, proc, args, kwargs):
