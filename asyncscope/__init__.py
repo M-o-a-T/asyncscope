@@ -51,6 +51,10 @@ scope = _ScopeProxy()
 
 
 class Scope:
+    """
+    A single scope, encapsulating some potentially-long-running service
+    that might be used by multiple independent tasks / other scopes.
+    """
     _ctx_ = None
 
     # unnamed scopes. Classvar.
