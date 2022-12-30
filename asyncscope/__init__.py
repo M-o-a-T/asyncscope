@@ -51,6 +51,8 @@ scope = _ScopeProxy()
 
 
 class Scope:
+    _ctx_ = None
+
     # unnamed scopes. Classvar.
     _id = 0
 
@@ -305,6 +307,15 @@ class Scope:
                 self.release(p, dead=True)
             self._tg = None
 
+    async def __aenter__(self):
+        if self._ctx_ is not None:
+            raise RuntimeError("A scope can only be used once")
+        self._ctx_ = self._ctx()
+        return await self._ctx_.__aenter__()  # pylint:disable=no-member  # YES IT HAS
+
+    async def __aexit__(self, *tb):
+        return await self._ctx_.__aexit__(*tb)  # pylint:disable=no-member  # YES IT HAS
+
     def may_not_require(self, s: Scope):
         """
         Assert that this scope doesn't require scope @s.
@@ -550,7 +561,7 @@ class ScopeSet:
         async with anyio.create_task_group() as tg:
             self._tg = tg
             self._scopes[s._name] = s
-            async with s._ctx():
+            async with s:
                 try:
                     yield s
                 finally:
