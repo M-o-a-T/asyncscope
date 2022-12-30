@@ -259,7 +259,7 @@ class Scope:
         The returned data will have an _asyncscope element.
         """
         if self._data_lock.is_set():
-            raise RuntimeError("You can't change the registration value")
+            raise RuntimeError(f"{self !r} can't change the registration value")
         self.logger.debug("%s: obj %r", self._name, data)
         self._data = data
         data._asyncscope = scope
