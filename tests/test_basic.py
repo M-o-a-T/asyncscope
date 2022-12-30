@@ -4,7 +4,7 @@ from random import random
 import anyio
 import pytest
 
-from asyncscope import ScopeSet, scope
+from asyncscope import main_scope, scope
 
 from . import Stepper
 
@@ -49,7 +49,7 @@ async def test_main():
 
     global _done
     _done = anyio.Event()
-    async with ScopeSet():
+    async with main_scope():
         stp = Stepper()
         await scope.spawn(main_a, stp)
         await _done.wait()
@@ -89,7 +89,7 @@ async def test_main_error_a():
     global _done
     _done = anyio.Event()
     with pytest.raises(RuntimeError) as e:
-        async with ScopeSet():
+        async with main_scope():
             stp = Stepper()
             await scope.spawn(main_a, stp)
             await _done.wait()
@@ -160,7 +160,7 @@ async def test_diamond():
 
     global _done
     _done = anyio.Event()
-    async with ScopeSet():
+    async with main_scope():
         evt = anyio.Event()
         await scope.spawn(main_a, evt)
         await evt.wait()

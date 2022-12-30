@@ -505,25 +505,19 @@ class ScopeSet:
 
     _tg = None
     _ctx_ = None
-    _main_name: str = None
     _seq = 0
 
-    def __init__(self, name: str = None):
-        self.logger = logging.getLogger(
-            f"scope.{name}" if name is not None else "scope"
-        )
+    def __init__(self, name):
+        self.name = name
+        self.logger = logging.getLogger(f"scope.{name}")
         self._scopes: Dict[str, Scope] = dict()
-        if name is None:
-            type(self)._seq += 1
-            name = "_main_%d" % (type(self)._seq)
-        self._main_name = name
 
     async def spawn(self, s: Scope, proc, *args, **kwargs):
         """
         Run 'proc' in the given scope.
         The scope must be new and the current scope must already depend on it.
         """
-        self.logger.debug("Spawn %r: %r %r %r", s, proc, args, kwargs)
+        scope.logger.debug("Spawn %r: %r %r %r", s, proc, args, kwargs)
 
         async def _service(s, proc, args, kwargs, *, task_status):
             with anyio.CancelScope(shield=True):
@@ -564,7 +558,7 @@ class ScopeSet:
         """
         if scope.get() is not None:
             raise RuntimeError("Don't nest scopesets")
-        s = Scope(self, "_main", new=True)
+        s = Scope(self, self.name, new=True)
         s.register(self)
         async with anyio.create_task_group() as tg:
             self._tg = tg
@@ -580,7 +574,7 @@ class ScopeSet:
         # At this point `self._scopes` shall be empty
         if self._scopes:
             raise RuntimeError(
-                f"ScopeSet {self._main_name !r} ended but not empty: "
+                "Main scope ended but not empty: "
                 + " ".join(tuple(repr(x) for x in self._scopes.keys()))
             )
 
@@ -594,7 +588,7 @@ class ScopeSet:
         return await self._ctx_.__aexit__(*tb)  # pylint:disable=no-member  # YES IT HAS
 
     def __repr__(self):
-        return "<%s %s>" % (self.__class__.__name__, self._main_name)
+        return "<%s>" % (self.__class__.__name__,)
 
 
 def get_scope(data: Any) -> Scope:
