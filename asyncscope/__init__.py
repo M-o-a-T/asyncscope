@@ -51,6 +51,13 @@ scope = _ScopeProxy()
 
 
 class Scope:
+    """
+    A single scope, encapsulating some potentially-long-running service
+    that might be used by multiple independent tasks / other scopes.
+    """
+
+    _ctx_ = None
+
     # unnamed scopes. Classvar.
     _id = 0
 
@@ -153,7 +160,10 @@ class Scope:
         """
         Scope._id += 1
         sc_id = Scope._id
-        return await self.service(f"_dyn_{sc_id}", proc, *args, _as_scope=_as_scope, **kwargs)
+
+        s = Scope(self._set, f"_dyn_{sc_id}")
+        await self._set.spawn(s, proc, *args, **kwargs)
+        return s if _as_scope else s._data
 
     async def _service(self, name, proc, args, kwargs):
         """
@@ -304,6 +314,15 @@ class Scope:
             for p in list(self._prev):
                 self.release(p, dead=True)
             self._tg = None
+
+    async def __aenter__(self):
+        if self._ctx_ is not None:
+            raise RuntimeError("A scope can only be used once")
+        self._ctx_ = self._ctx()
+        return await self._ctx_.__aenter__()  # pylint:disable=no-member  # YES IT HAS
+
+    async def __aexit__(self, *tb):
+        return await self._ctx_.__aexit__(*tb)  # pylint:disable=no-member  # YES IT HAS
 
     def may_not_require(self, s: Scope):
         """
@@ -543,12 +562,14 @@ class ScopeSet:
         """
         Context manager for a new scope set
         """
+        if scope.get() is not None:
+            raise RuntimeError("Don't nest scopesets")
         s = Scope(self, "_main", new=True)
         s.register(self)
         async with anyio.create_task_group() as tg:
             self._tg = tg
             self._scopes[s._name] = s
-            async with s._ctx():
+            async with s:
                 try:
                     yield s
                 finally:
