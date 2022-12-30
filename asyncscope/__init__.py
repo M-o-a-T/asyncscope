@@ -543,6 +543,8 @@ class ScopeSet:
         """
         Context manager for a new scope set
         """
+        if scope.get() is not None:
+            raise RuntimeError("Don't nest scopesets")
         s = Scope(self, "_main", new=True)
         s.register(self)
         async with anyio.create_task_group() as tg:
