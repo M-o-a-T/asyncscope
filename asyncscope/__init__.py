@@ -167,6 +167,7 @@ class Scope:
 
         s = Scope(self._set, f"_dyn_{sc_id}")
         await self._set.spawn(s, proc, *args, **kwargs)
+        await s._data_lock.wait()
         return s if _as_scope else s._data
 
     async def _service(self, name, proc, args, kwargs):
