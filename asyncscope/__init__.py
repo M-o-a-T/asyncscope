@@ -288,8 +288,7 @@ class Scope:
                     yield self
                 finally:
                     del self._set[self._name]
-                    with anyio.CancelScope(shield=True):
-                        await self.cancel_immediate()
+                    self.cancel_immediate()
 
         except Exception as exc:
             if self._data_lock.is_set():
@@ -454,7 +453,7 @@ class Scope:
             await s.wait()
         self.logger.debug("Cancel dependents done")
 
-    async def cancel_immediate(self):
+    def cancel_immediate(self):
         """
         Cancel this scope.
 
