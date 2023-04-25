@@ -612,6 +612,7 @@ async def main_scope(name="_main"):
         try:
             yield s
         finally:
-            await s.cancel_dependents()  # there should not be any, but …
+            with anyio.CancelScope(shield=True):
+                await s.cancel_dependents()  # there should not be any, but …
             s.cancel()
     pass  # end main scope
