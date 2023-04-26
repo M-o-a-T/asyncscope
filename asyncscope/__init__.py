@@ -256,13 +256,16 @@ class Scope:
 
         The data is returned by calls to `service` from other scopes.
 
-        The returned data will have an _asyncscope element.
+        The returned data will have an _asyncscope element, if possible.
         """
         if self._data_lock.is_set():
             raise RuntimeError(f"{self !r} can't change the registration value")
         self.logger.debug("%s: obj %r", self._name, data)
         self._data = data
-        data._asyncscope = scope
+        try:
+            data._asyncscope = scope
+        except AttributeError:
+            pass
         self._data_lock.set()
 
     @asynccontextmanager
@@ -437,7 +440,10 @@ class Scope:
             self.logger.debug("Wait No more users: OK")
         finally:
             self._no_more = None
-            del self._data._asyncscope
+            try:
+                del self._data._asyncscope
+            except AttributeError:
+                pass
             del self._data
 
     async def cancel_dependents(self):
