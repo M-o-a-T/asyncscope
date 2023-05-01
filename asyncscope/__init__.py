@@ -80,10 +80,6 @@ class _Scope:
     # my name
     _name: str = None
 
-    # Signal for controlled shutdown via wait_no_users
-    _no_users: anyio.abc.Event = None
-    # if None, the scope's taskgroup is cancelled instead
-
     cancel_called:bool = False
 
     def __init__(self, scopeset: ScopeSet, name:str):
@@ -289,30 +285,6 @@ class _Scope:
         """
         async with self.using_scope() as s:
             yield await s.service(*a, **kw)
-    async def wait_no_users(self):
-        """
-        Wait until all of your users are gone.
-
-        Call this if you want to clean up in a controlled way instead of
-        getting cancelled.
-
-        You *must* terminate your scope if this returns!
-        """
-        try:
-            self._no_users = anyio.Event()
-            self.logger.debug("Wait until No more users")
-            await self._no_users.wait()
-        except BaseException as exc:
-            self.logger.debug("Wait until No more users: %r", exc)
-            raise
-        else:
-            self.logger.debug("Wait until No more users: OK")
-        finally:
-            self._no_users = None
-
-    # compatibility
-    def no_more_dependents(self):
-        return self.wait_no_users()
 
 
     async def spawn(self, proc, *args, **kwargs):
@@ -403,6 +375,10 @@ class Scope(_Scope):
     # the scopes depending on me
     # val: how often they do – might have been added more than once
     _users: Dict[Scope, int] = None
+
+    # Signal for controlled shutdown via wait_no_users
+    _no_users: anyio.abc.Event = None
+    # if None, the scope's taskgroup is cancelled instead
 
     def __init__(self, scopeset: ScopeSet, name: str):
         super().__init__(scopeset, name)
@@ -504,14 +480,26 @@ class Scope(_Scope):
 
     async def wait_no_users(self):
         """
-        Wait until all of your dependents are gone.
+        Wait until all of your users are gone.
 
         Call this if you want to clean up in a controlled way instead of
         getting cancelled.
 
         You *must* terminate your scope if this returns!
         """
-        await super().wait_no_users()
+        if not self._users:
+            return
+        try:
+            self._no_users = anyio.Event()
+            self.logger.debug("Wait until No more users")
+            await self._no_users.wait()
+        except BaseException as exc:
+            self.logger.debug("Wait until No more users: %r", exc)
+            raise
+        else:
+            self.logger.debug("Wait until No more users: OK")
+        finally:
+            self._no_users = None
 
         try:
             del self._data._asyncscope
@@ -522,7 +510,11 @@ class Scope(_Scope):
         except AttributeError:
             pass
 
-    
+    # compatibility
+    def no_more_dependents(self):
+        return self.wait_no_users()
+
+
     def release_user(self, s, dead:bool = False) -> bool:
         """
         Forget this user.
