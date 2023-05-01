@@ -207,10 +207,11 @@ async def test_using(err):
     async def srv_a():
         logger.debug("A pre")
         scope.register(69)
+        s = scope.get()
         async with scope.using_service("B",srv_b) as b:
             assert b == 123
             logger.debug("A run")
-            await scope.wait_no_users()
+            await s.wait_no_users()
             logger.debug("A releasing B")
         logger.debug("A post")
 
