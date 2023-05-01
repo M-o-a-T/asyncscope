@@ -272,6 +272,9 @@ class _Scope:
             finally:
                 if self._exc:
                     raise ExceptionGroup(self.name, self._exc)
+                cc = sw.cancel_called
+        if cc:
+            raise ScopeDied(self)
 
     @asynccontextmanager
     async def using_service(self, *a, **kw):
@@ -285,14 +288,7 @@ class _Scope:
         The context's value is `val`
         """
         async with self.using_scope() as s:
-            try:
-                yield await s.service(*a, **kw)
-            finally:
-                cc = s.cancel_called
-        if cc:
-            raise ScopeDied(self)
-
-
+            yield await s.service(*a, **kw)
     async def wait_no_users(self):
         """
         Wait until all of your users are gone.
