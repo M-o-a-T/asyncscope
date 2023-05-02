@@ -161,7 +161,7 @@ Using `AsyncScope`, a service is used in one of two ways.
     from asyncscope import scope
 
     async with scope.using_service(name, some_service, *p, **kw) as srv:
-       ...
+        ...
 
 * until the caller's scope ends *or* you explicitly release it::
 
@@ -172,18 +172,18 @@ Using `AsyncScope`, a service is used in one of two ways.
     del srv  # don't hog the memory!
     scope.release(name)
 
- * check whether a named service exists::
+You can also check whether a named service exists::
 
     from asyncscope import scope
 
     try:
         srv = scope.lookup(name)
     except KeyError:
-       pass  # no it does not
+        pass  # no it does not
     else:
-       ...
-       del srv
-       scope.release(name)
+        ...
+        del srv
+        scope.release(name)
 
 In all three cases ``srv`` is the object that your ``some_service`` code has
 passed to `AsyncScope.Scope.register`.
