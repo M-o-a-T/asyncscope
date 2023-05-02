@@ -160,7 +160,8 @@ Using `AsyncScope`, a service is used in one of two ways.
 
     from asyncscope import scope
 
-    async with scope.using_service(name, some_service, *p, **kw) as srv:
+    async with scope.using_scope():
+        srv = await scope.service(name, some_service, *p, **kw)
         ...
 
 * until the caller's scope ends *or* you explicitly release it::

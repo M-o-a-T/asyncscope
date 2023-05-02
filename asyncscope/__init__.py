@@ -272,21 +272,6 @@ class _Scope:
         if cc:
             raise ScopeDied(self)
 
-    @asynccontextmanager
-    async def using_service(self, *a, **kw):
-        """
-        A shortcut for::
-
-            async with using_scope():
-                val = service()
-                …
-
-        The context's value is `val`
-        """
-        async with self.using_scope() as s:
-            yield await s.service(*a, **kw)
-
-
     async def spawn(self, proc, *args, **kwargs):
         """
         Run a task within this scope.

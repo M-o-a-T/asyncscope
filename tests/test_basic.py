@@ -208,7 +208,8 @@ async def test_using(err):
         logger.debug("A pre")
         scope.register(69)
         s = scope.get()
-        async with scope.using_service("B",srv_b) as b:
+        async with scope.using_scope():
+            b = await scope.service("B",srv_b)
             assert b == 123
             logger.debug("A run")
             await s.wait_no_users()
@@ -220,7 +221,8 @@ async def test_using(err):
         s = scope.get()
 
         with pytest.raises(ScopeDied):
-            async with scope.using_service("B",srv_b) as b:
+            async with scope.using_scope():
+                b = await scope.service("B",srv_b)
                 assert b == 123
                 s.register(69)
                 logger.debug("AA run")
