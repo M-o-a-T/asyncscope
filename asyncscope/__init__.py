@@ -186,9 +186,9 @@ class _Scope:
 
         await s._data_lock.wait()
         if s._error is None:
-            self.logger.debug("%s = %r", name, s._data)
+            s.logger.debug("= %r", s._data)
         else:
-            self.logger.error("%s = %r", name, s._error)
+            s.logger.error("= %r", s._error)
             self.release(s, dead=True)
             raise s._error
         return s
@@ -394,7 +394,7 @@ class Scope(_Scope):
 
         if self._data_lock.is_set():
             raise RuntimeError(f"{self !r} can't change the registration value")
-        self.logger.debug("%s: obj %r", self._name, data)
+        self.logger.debug("obj %r", data)
         self._data = data
         try:
             data._asyncscope = scope
