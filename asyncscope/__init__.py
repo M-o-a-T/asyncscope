@@ -742,4 +742,5 @@ async def main_scope(name="_main"):
             yield s
         finally:
             s.cancel()
+            s.release_required()
     pass  # end main scope
