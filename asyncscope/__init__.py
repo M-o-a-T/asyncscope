@@ -246,7 +246,7 @@ class _Scope:
         return s
 
     @asynccontextmanager
-    async def using_scope(self):
+    async def using_scope(self, name=None):
         """
         This is a context manager which allows nesting contexts.
 
@@ -254,7 +254,7 @@ class _Scope:
         exited.
         """
 
-        async with UseScope(self._set) as sw:
+        async with UseScope(self._set, name=name) as sw:
             try:
                 yield sw
             except ScopeDied as exc:
@@ -695,7 +695,7 @@ class ScopeSet:
         """
         if scope.get() is not None:
             raise RuntimeError("Don't nest scopesets!")
-        async with UseScope(self, name=self.name) as s:
+        async with UseScope(self, name=f"{self.name}._main") as s:
             self._sc = s
             try:
                 async with UseScope(self, name=self.name) as si:
