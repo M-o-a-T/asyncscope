@@ -4,7 +4,7 @@ from random import random
 import anyio
 import pytest
 
-from asyncscope import main_scope, scope, ScopeDied
+from asyncscope import ScopeDied, main_scope, scope
 
 from . import Stepper
 
@@ -172,7 +172,7 @@ async def test_diamond():
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("err",[False,True])
+@pytest.mark.parametrize("err", [False, True])
 async def test_using(err):
     evt = anyio.Event()
     evt2 = anyio.Event()
@@ -191,6 +191,7 @@ async def test_using(err):
         scope.register(123)
         logger.debug("B run")
         async with anyio.create_task_group() as tg:
+
             @tg.start_soon
             async def evw():
                 await evt.wait()
@@ -202,6 +203,7 @@ async def test_using(err):
                 await scope.wait_no_users()
                 logger.debug("B no more users")
                 tg.cancel_scope.cancel()
+
         logger.debug("B post")
 
     async def srv_a():
@@ -209,7 +211,7 @@ async def test_using(err):
         scope.register(69)
         s = scope.get()
         async with scope.using_scope():
-            b = await scope.service("B",srv_b)
+            b = await scope.service("B", srv_b)
             assert b == 123
             logger.debug("A run")
             await s.wait_no_users()
@@ -222,7 +224,7 @@ async def test_using(err):
 
         with pytest.raises(ScopeDied):
             async with scope.using_scope():
-                b = await scope.service("B",srv_b)
+                b = await scope.service("B", srv_b)
                 assert b == 123
                 s.register(69)
                 logger.debug("AA run")

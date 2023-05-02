@@ -25,8 +25,8 @@ create one.
 """
 from __future__ import annotations
 
-import sys
 import logging
+import sys
 from collections import defaultdict
 from concurrent.futures import CancelledError
 from contextlib import asynccontextmanager, contextmanager
@@ -43,6 +43,7 @@ _scope = ContextVar("scope", default=None)
 class ScopeDied(RuntimeError):
     pass
 
+
 class _ScopeProxy:
     def get(self):
         "return the actual scope contextvar"
@@ -54,6 +55,7 @@ class _ScopeProxy:
     def thread_reset(self):
         "clear scope var for use w/ multithreading"
         _scope.set(None)
+
 
 scope = _ScopeProxy()
 
@@ -80,9 +82,9 @@ class _Scope:
     # my name
     _name: str = None
 
-    cancel_called:bool = False
+    cancel_called: bool = False
 
-    def __init__(self, scopeset: ScopeSet, name:str):
+    def __init__(self, scopeset: ScopeSet, name: str):
         self._set = scopeset
         self._name = name
         self._requires = set()
@@ -125,7 +127,7 @@ class _Scope:
         self._requires.remove(s)
         s._released(self)
 
-    def release_user(self, s, dead:bool = False):
+    def release_user(self, s, dead: bool = False):
         """
         Forget this user.
 
@@ -310,7 +312,7 @@ class _Scope:
     def cancel_scope(self):
         return self
 
-    def cancel(self, killed:bool = False):
+    def cancel(self, killed: bool = False):
         """
         Cancel this scope.
         """
@@ -327,7 +329,6 @@ class _Scope:
         else:
             self.logger.debug("No more users, set no_more flag")
             self._no_users.set()
-
 
     def __hash__(self):
         return id(self)
@@ -463,7 +464,6 @@ class Scope(_Scope):
     async def __aexit__(self, *tb):
         return await self._ctx_.__aexit__(*tb)  # pylint:disable=no-member  # YES IT HAS
 
-
     async def wait_no_users(self):
         """
         Wait until all of your users are gone.
@@ -500,8 +500,7 @@ class Scope(_Scope):
     def no_more_dependents(self):
         return self.wait_no_users()
 
-
-    def release_user(self, s, dead:bool = False) -> bool:
+    def release_user(self, s, dead: bool = False) -> bool:
         """
         Forget this user.
 
@@ -518,12 +517,13 @@ class Scope(_Scope):
         else:
             self._users[s] -= 1
             if self._users[s]:
-                self.logger.debug("releasing %s, still in use %d", s._name, self._users[s])
+                self.logger.debug(
+                    "releasing %s, still in use %d", s._name, self._users[s]
+                )
                 return True
             self.logger.debug("releasing %s, closing", s._name)
         del self._users[s]
         return False
-
 
     @property
     def all_users(self):
@@ -575,16 +575,15 @@ class Scope(_Scope):
 class UseScope(_Scope):
     # Marker for `cancel_immediate` that teaches a "using_service" context
     # manager that a cancellation needs to cause an error
-    _killed:bool = False
+    _killed: bool = False
 
     # Exceptions seen in scopes we use
-    _exc:list[Exception] = None
+    _exc: list[Exception] = None
 
-    def __init__(self, scopeset:ScopeSet, name:str = None):
+    def __init__(self, scopeset: ScopeSet, name: str = None):
         if name is None:
             name = f"{scope._name}._{scope.seqnr}"
         super().__init__(scopeset, name)
-
 
     @property
     def _users_set(self):
@@ -618,7 +617,7 @@ class UseScope(_Scope):
             self.release_required()
             self._tg = None
 
-    def cancel(self, exc:Exception = None):
+    def cancel(self, exc: Exception = None):
         """
         Cancel this scope.
         """
