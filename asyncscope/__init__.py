@@ -403,7 +403,7 @@ class Scope(_Scope):
         self._data_lock.set()
 
     @asynccontextmanager
-    async def _ctx(self):
+    async def _ctx(self, current_scope=None):
         """
         The scope's context manager.
         """
@@ -412,7 +412,8 @@ class Scope(_Scope):
         if self._set[self._name] is not self:
             raise RuntimeError(f"Lookup of {self._name} does not match scope")
 
-        current_scope = _scope.get()
+        if current_scope is None:
+            current_scope = _scope.get()
         self._scope = _scope.set(self)
         try:
             async with anyio.create_task_group() as tg:
@@ -656,14 +657,15 @@ class ScopeSet:
         """
         scope.logger.debug("Spawn %r: %r %r %r", s, proc, args, kwargs)
 
-        async def _service(s, proc, args, kwargs, *, task_status):
+        async def _service(sc, s, proc, args, kwargs, *, task_status):
             with anyio.CancelScope(shield=True):
                 # Shielded because cancellation is managed by the scope
-                async with s._ctx():
+                async with s._ctx(current_scope=sc):
                     task_status.started()
                     await proc(*args, **kwargs)
 
-        await self._sc._tg.start(_service, s, proc, args, kwargs)
+        sc = _scope.get()
+        await self._sc._tg.start(_service, sc, s, proc, args, kwargs)
 
     def __getitem__(self, key):
         if isinstance(key, Scope):
