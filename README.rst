@@ -160,8 +160,9 @@ Using `AsyncScope`, a service is used in one of two ways.
 
     from asyncscope import scope
 
-    async with scope.using_service(name, some_service, *p, **kw) as srv:
-       ...
+    async with scope.using_scope():
+        srv = await scope.service(name, some_service, *p, **kw)
+        ...
 
 * until the caller's scope ends *or* you explicitly release it::
 
@@ -172,18 +173,18 @@ Using `AsyncScope`, a service is used in one of two ways.
     del srv  # don't hog the memory!
     scope.release(name)
 
- * check whether a named service exists::
+You can also check whether a named service exists::
 
     from asyncscope import scope
 
     try:
         srv = scope.lookup(name)
     except KeyError:
-       pass  # no it does not
+        pass  # no it does not
     else:
-       ...
-       del srv
-       scope.release(name)
+        ...
+        del srv
+        scope.release(name)
 
 In all three cases ``srv`` is the object that your ``some_service`` code has
 passed to `AsyncScope.Scope.register`.
@@ -325,11 +326,10 @@ Temporary services
 ++++++++++++++++++
 
 Some services don't need to be running all the time. To release a service
-early, use ``async with scope.subscope():``. This creates an embeeded scope.
-Services started within this subscope are auto-released when it exits,
-assuming as usual that no other code uses them.
+early, use ``async with scope.using_scope():``. This creates an embedded scope.
+Services started within an embedded scope are auto-released when its
+context exits, assuming (as usual) that no other code uses them.
 
-When a (sub)scope's main task ends, any still-running tasks running within
-its task group are cancelled instead of waiting for them to end (as a
-"normal" task group would).
-
+If a scope handler that's used by an embedded scope exits, the code running
+in the embedded scope is cancelled as usual. Leaving the embedded scope
+then triggers a `ScopeDied` exception.
