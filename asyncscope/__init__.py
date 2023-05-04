@@ -424,7 +424,6 @@ class Scope(_Scope):
                     yield self
                 finally:
                     del self._set[self._name]
-                    self.cancel_immediate()
 
         except Exception as exc:
             if self._data_lock.is_set():
@@ -440,7 +439,9 @@ class Scope(_Scope):
             raise
 
         finally:
-            if not self._data_lock.is_set():
+            if self._data_lock.is_set():
+                self.cancel_immediate()
+            else:
                 self._error = RuntimeError(
                     f"{self._name} didn't call `scope.register`!"
                 )
