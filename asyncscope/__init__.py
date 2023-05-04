@@ -25,11 +25,10 @@ create one.
 """
 from __future__ import annotations
 
-import sys
 import logging
 from collections import defaultdict
 from concurrent.futures import CancelledError
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from functools import partial
 from typing import Any, Dict, Set
@@ -43,6 +42,7 @@ _scope = ContextVar("scope", default=None)
 class ScopeDied(RuntimeError):
     pass
 
+
 class _ScopeProxy:
     def get(self):
         "return the actual scope contextvar"
@@ -54,6 +54,7 @@ class _ScopeProxy:
     def thread_reset(self):
         "clear scope var for use w/ multithreading"
         _scope.set(None)
+
 
 scope = _ScopeProxy()
 
@@ -80,9 +81,13 @@ class _Scope:
     # my name
     _name: str = None
 
-    cancel_called:bool = False
+    # Taskgroup that controls the job(s) running in this scope
+    # MUST be set by subclass context manager
+    _tg: anyio.abc.TaskGroup = None
 
-    def __init__(self, scopeset: ScopeSet, name:str):
+    cancel_called: bool = False
+
+    def __init__(self, scopeset: ScopeSet, name: str):
         self._set = scopeset
         self._name = name
         self._requires = set()
@@ -125,7 +130,7 @@ class _Scope:
         self._requires.remove(s)
         s._released(self)
 
-    def release_user(self, s, dead:bool = False):
+    def release_user(self, s, dead: bool = False):
         """
         Forget this user.
 
@@ -181,6 +186,8 @@ class _Scope:
             s = Scope(self._set, name)
             await self._set.spawn(s, proc, *args, **kwargs)
         else:
+            if not isinstance(s, Scope):
+                raise RuntimeError(f"{name !r}: not a regular scope")
             self.logger.debug("also requires %s", name)
         self.requires(s)
 
@@ -257,20 +264,17 @@ class _Scope:
         async with UseScope(self._set, name=name) as sw:
             try:
                 yield sw
-            except ScopeDied as exc:
-                if not self._exc:
-                    raise
-                self.logger.debug(f"Error: {exc!r} in {self.name}", exc_info=exc)
-                self._exc.append(exc)
             except Exception as exc:
-                self.logger.debug(f"Error: {exc!r} in {self.name}", exc_info=exc)
+                self.logger.debug("Error: %r in %r", exc, self.name, exc_info=exc)
                 self._exc.append(exc)
             finally:
                 if self._exc:
+                    if len(self._exc) == 1:
+                        raise self._exc[0]
                     raise ExceptionGroup(self.name, self._exc)
                 cc = sw.cancel_called
         if cc:
-            raise ScopeDied(self)
+            raise ScopeDied(self, cc)
 
     async def spawn(self, proc, *args, **kwargs):
         """
@@ -310,24 +314,14 @@ class _Scope:
     def cancel_scope(self):
         return self
 
-    def cancel(self, killed:bool = False):
+    def cancel(self, *, trigger: Scope = None):
         """
         Cancel this scope.
         """
         self.logger.debug("Cancelled")
-        self.cancel_called = True
+        self.cancel_called = trigger or True
         if self._tg:
             self._tg.cancel_scope.cancel()
-
-    def _sig_no_users(self):
-        """"""
-        if self._no_users is None:
-            self.logger.debug("No more users, cancel task")
-            self.cancel()
-        else:
-            self.logger.debug("No more users, set no_more flag")
-            self._no_users.set()
-
 
     def __hash__(self):
         return id(self)
@@ -354,9 +348,6 @@ class Scope(_Scope):
     # signal that this scope is closed
     _done: anyio.abc.Event = None
 
-    # Taskgroup that controls the jobs running in this scope
-    _tg: anyio.abc.TaskGroup = None
-
     # the scopes depending on me
     # val: how often they do – might have been added more than once
     _users: Dict[Scope, int] = None
@@ -378,8 +369,15 @@ class Scope(_Scope):
         return self._data
 
     def _released(self, s: Scope):
-        if not self._users:
-            self._sig_no_users()
+        if self._users:
+            return
+
+        if self._no_users is None:
+            self.logger.debug("No more users, cancel task")
+            self.cancel()
+        else:
+            self.logger.debug("No more users, set no_more flag")
+            self._no_users.set()
 
     def register(self, data: Any):
         """
@@ -390,7 +388,7 @@ class Scope(_Scope):
         The returned data will have an _asyncscope element, if possible.
         """
         if self._data_lock is None:
-            raise RuntimeError(f"Don't call from a 'using_service' block")
+            raise RuntimeError("Don't call from a 'using_service' block")
 
         if self._data_lock.is_set():
             raise RuntimeError(f"{self !r} can't change the registration value")
@@ -463,7 +461,6 @@ class Scope(_Scope):
     async def __aexit__(self, *tb):
         return await self._ctx_.__aexit__(*tb)  # pylint:disable=no-member  # YES IT HAS
 
-
     async def wait_no_users(self):
         """
         Wait until all of your users are gone.
@@ -500,8 +497,7 @@ class Scope(_Scope):
     def no_more_dependents(self):
         return self.wait_no_users()
 
-
-    def release_user(self, s, dead:bool = False) -> bool:
+    def release_user(self, s, dead: bool = False) -> bool:
         """
         Forget this user.
 
@@ -518,12 +514,13 @@ class Scope(_Scope):
         else:
             self._users[s] -= 1
             if self._users[s]:
-                self.logger.debug("releasing %s, still in use %d", s._name, self._users[s])
+                self.logger.debug(
+                    "releasing %s, still in use %d", s._name, self._users[s]
+                )
                 return True
             self.logger.debug("releasing %s, closing", s._name)
         del self._users[s]
         return False
-
 
     @property
     def all_users(self):
@@ -558,7 +555,7 @@ class Scope(_Scope):
         self.logger.debug("Cancel Immediate")
         done = False
         for s in self.all_users:
-            s.cancel()
+            s.cancel(trigger=self)
             done = True
         self.cancel()
         return done
@@ -575,16 +572,15 @@ class Scope(_Scope):
 class UseScope(_Scope):
     # Marker for `cancel_immediate` that teaches a "using_service" context
     # manager that a cancellation needs to cause an error
-    _killed:bool = False
+    _killed: bool = False
 
     # Exceptions seen in scopes we use
-    _exc:list[Exception] = None
+    _exc: list[Exception] = None
 
-    def __init__(self, scopeset:ScopeSet, name:str = None):
+    def __init__(self, scopeset: ScopeSet, name: str = None):
         if name is None:
             name = f"{scope._name}._{scope.seqnr}"
         super().__init__(scopeset, name)
-
 
     @property
     def _users_set(self):
@@ -618,11 +614,11 @@ class UseScope(_Scope):
             self.release_required()
             self._tg = None
 
-    def cancel(self, exc:Exception = None):
+    def cancel(self, *, exc: Exception = None, trigger=None):
         """
         Cancel this scope.
         """
-        super().cancel()
+        super().cancel(trigger=trigger)
         if exc:
             self._exc.append(exc)
 
@@ -641,7 +637,7 @@ class ScopeSet:
     This class is the container for the `main_scope` context manager.
     """
 
-    _tg = None
+    _sc = None
     _ctx_ = None
     _seq = 0
 
@@ -701,7 +697,7 @@ class ScopeSet:
             self._sc = s
             try:
                 async with UseScope(self, name=self.name) as si:
-                    yield s
+                    yield s, si
             except Exception as exc:
                 s._exc.append(exc)
 
@@ -740,9 +736,17 @@ async def main_scope(name="_main"):
     """
 
     async with ScopeSet(name=name) as s:
+        s, si = s
         try:
             yield s
         finally:
-            s.cancel()
+            si.release_required()
             s.release_required()
+            # s.cancel()
+    err = set(s._exc) | set(si._exc)
+    if err:
+        if len(err) == 1:
+            raise list(err)[0]
+        else:
+            raise ExceptionGroup(name, err)
     pass  # end main scope
