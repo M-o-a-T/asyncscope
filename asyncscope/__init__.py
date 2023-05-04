@@ -271,7 +271,7 @@ class _Scope:
                     raise ExceptionGroup(self.name, self._exc)
                 cc = sw.cancel_called
         if cc:
-            raise ScopeDied(self)
+            raise ScopeDied(self, cc)
 
     async def spawn(self, proc, *args, **kwargs):
         """
@@ -311,12 +311,12 @@ class _Scope:
     def cancel_scope(self):
         return self
 
-    def cancel(self, killed: bool = False):
+    def cancel(self, *, trigger:Scope = None):
         """
         Cancel this scope.
         """
         self.logger.debug("Cancelled")
-        self.cancel_called = True
+        self.cancel_called = trigger or True
         if self._tg:
             self._tg.cancel_scope.cancel()
 
@@ -557,7 +557,7 @@ class Scope(_Scope):
         self.logger.debug("Cancel Immediate")
         done = False
         for s in self.all_users:
-            s.cancel()
+            s.cancel(trigger=self)
             done = True
         self.cancel()
         return done
@@ -616,11 +616,11 @@ class UseScope(_Scope):
             self.release_required()
             self._tg = None
 
-    def cancel(self, exc: Exception = None):
+    def cancel(self, *, exc: Exception = None, trigger = None):
         """
         Cancel this scope.
         """
-        super().cancel()
+        super().cancel(trigger=trigger)
         if exc:
             self._exc.append(exc)
 
