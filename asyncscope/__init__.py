@@ -644,7 +644,6 @@ class ScopeSet:
 
     def __init__(self, name):
         self.name = name
-        self.logger = logging.getLogger(f"scope.{name}")
         self._scopes: Dict[str, Scope] = dict()
 
     async def spawn(self, s: Scope, proc, *args, **kwargs):
