@@ -93,7 +93,7 @@ class _Scope:
         self._requires = set()
         self._exc = []
 
-        self.logger = logging.getLogger(name)
+        self.logger = logging.getLogger(f"scope.{name}")
 
     def __repr__(self):
         return "<%s %s>" % (self.__class__.__name__, self._name)
