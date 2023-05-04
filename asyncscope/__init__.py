@@ -700,7 +700,7 @@ class ScopeSet:
             self._sc = s
             try:
                 async with UseScope(self, name=self.name) as si:
-                    yield s
+                    yield s,si
             except Exception as exc:
                 s._exc.append(exc)
 
@@ -739,9 +739,18 @@ async def main_scope(name="_main"):
     """
 
     async with ScopeSet(name=name) as s:
+        s,si = s
         try:
             yield s
         finally:
-            s.cancel()
+            si.release_required()
             s.release_required()
+            # s.cancel()
+    err = set(s._exc) | set(si._exc)
+    if err:
+        if len(err) == 1:
+            raise list(err)[0]
+        else:
+            raise ExceptionGroup(name, err)
     pass  # end main scope
+    
