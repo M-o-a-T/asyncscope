@@ -261,16 +261,13 @@ class _Scope:
         async with UseScope(self._set, name=name) as sw:
             try:
                 yield sw
-            except ScopeDied as exc:
-                if not self._exc:
-                    raise
-                self.logger.debug(f"Error: {exc!r} in {self.name}", exc_info=exc)
-                self._exc.append(exc)
             except Exception as exc:
                 self.logger.debug(f"Error: {exc!r} in {self.name}", exc_info=exc)
                 self._exc.append(exc)
             finally:
                 if self._exc:
+                    if len(self._exc) == 1:
+                        raise self._exc[0]
                     raise ExceptionGroup(self.name, self._exc)
                 cc = sw.cancel_called
         if cc:
