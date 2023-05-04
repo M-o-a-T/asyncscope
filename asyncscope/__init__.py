@@ -183,6 +183,8 @@ class _Scope:
             s = Scope(self._set, name)
             await self._set.spawn(s, proc, *args, **kwargs)
         else:
+            if not isinstance(s, Scope):
+                raise RuntimeError(f"{name !r}: not a regular scope")
             self.logger.debug("also requires %s", name)
         self.requires(s)
 
