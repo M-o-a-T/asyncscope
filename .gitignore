@@ -4,3 +4,4 @@ __pycache__/
 /debian/
 /build/
 /.pybuild/
+/.eggs/
