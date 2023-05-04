@@ -37,6 +37,7 @@ async def test_main():
             await anyio.sleep(999)
         finally:
             await dly()
+            await dly()
             stp(2)
 
     async def main_a(stp):
