@@ -269,9 +269,10 @@ class _Scope:
                 self._exc.append(exc)
             finally:
                 if self._exc:
-                    if len(self._exc) == 1:
-                        raise self._exc[0]
-                    raise ExceptionGroup(self.name, self._exc)
+                    e,self._exc = self._exc,[]
+                    if len(e) == 1:
+                        raise e[0]
+                    raise ExceptionGroup(self.name, e)
                 cc = sw.cancel_called
         if cc:
             raise ScopeDied(self, cc)
