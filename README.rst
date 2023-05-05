@@ -308,7 +308,7 @@ A scope's main code typically looks like this:
   scopes it depends on. Note that if the scope is already running,
   ``service`` simply returns its existing service object.
 
-* call ``scope.register(serice_object)``
+* call ``scope.register(service_object)``
 
 * call ``await scope.no_more_dependents()`` (subordinate task) or wait for SIGTERM (daemon main task)
   or terminate (main task's job is done)
