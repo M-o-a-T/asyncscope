@@ -652,8 +652,6 @@ class ScopeSet:
         Run 'proc' in the given scope.
         The scope must be new and the current scope must already depend on it.
         """
-        scope.logger.debug("Spawn %r: %r %r %r", s, proc, args, kwargs)
-
         async def _service(sc, s, proc, args, kwargs, *, task_status):
             with anyio.CancelScope(shield=True):
                 # Shielded because cancellation is managed by the scope
