@@ -93,7 +93,7 @@ class _Scope:
         self._requires = set()
         self._exc = []
 
-        self.logger = logging.getLogger(name)
+        self.logger = logging.getLogger(f"scope.{name}")
 
     def __repr__(self):
         return "<%s %s>" % (self.__class__.__name__, self._name)
@@ -269,9 +269,10 @@ class _Scope:
                 self._exc.append(exc)
             finally:
                 if self._exc:
-                    if len(self._exc) == 1:
-                        raise self._exc[0]
-                    raise ExceptionGroup(self.name, self._exc)
+                    e,self._exc = self._exc,[]
+                    if len(e) == 1:
+                        raise e[0]
+                    raise ExceptionGroup(self.name, e)
                 cc = sw.cancel_called
         if cc:
             raise ScopeDied(self, cc)
@@ -644,7 +645,6 @@ class ScopeSet:
 
     def __init__(self, name):
         self.name = name
-        self.logger = logging.getLogger(f"scope.{name}")
         self._scopes: Dict[str, Scope] = dict()
 
     async def spawn(self, s: Scope, proc, *args, **kwargs):
@@ -652,8 +652,6 @@ class ScopeSet:
         Run 'proc' in the given scope.
         The scope must be new and the current scope must already depend on it.
         """
-        scope.logger.debug("Spawn %r: %r %r %r", s, proc, args, kwargs)
-
         async def _service(sc, s, proc, args, kwargs, *, task_status):
             with anyio.CancelScope(shield=True):
                 # Shielded because cancellation is managed by the scope
